@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  code-check:
+    if: github.event.pull_request.draft == false
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: python -m pip install pre-commit
+        shell: bash
+
+      - run: pre-commit run --show-diff-on-failure --color=always --all-files
+        shell: bash
+
+  pytest:
+    if: github.event.pull_request.draft == false
+    permissions:
+      contents: read
+      pull-requests: write
+    strategy:
+        matrix:
+            os: [windows-latest, macos-latest, ubuntu-latest]
+            python-version: ["3.11"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          ref: main
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Dependencies
+        run: uv sync --all-extras
+
+      - name: Test with pytest
+        run: uv run --no-cache pytest
