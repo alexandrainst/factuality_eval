@@ -21,6 +21,7 @@ ______________________________________________________________________
 Developer:
 
 - Freja Thoresen (freja.thoresen@alexandra.dk)
+- Dan Saattrup Smart (dan.smart@alexandra.dk)
 
 
 ## Setup

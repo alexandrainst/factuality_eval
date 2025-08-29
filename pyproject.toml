@@ -5,9 +5,11 @@ description = "Evaluation of how factual/trustworthy LLMs are."
 readme = "README.md"
 authors = [
     {name = "Freja Thoresen", email = "freja.thoresen@alexandra.dk"},
+    {name = "Dan Saattrup Smart", email = "dan.smart@alexandra.dk"},
 ]
 maintainers = [
     {name = "Freja Thoresen", email = "freja.thoresen@alexandra.dk"},
+    {name = "Dan Saattrup Smart", email = "dan.smart@alexandra.dk"},
 ]
 requires-python = ">=3.11,<4.0"
 dependencies = [
