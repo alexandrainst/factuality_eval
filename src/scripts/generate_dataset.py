@@ -42,8 +42,8 @@ def main(config: DictConfig) -> None:
         testing=config.testing,
     )
     intensities = sample_hallucination_intensities(
-        mean=config.hallucination_intensity.mean,
-        std=config.hallucination_intensity.std,
+        mean=config.beta_distribution.mean,
+        std=config.beta_distribution.std,
         size=len(answers),
     )
     dataset = generate_hallucinations_from_qa_data(
