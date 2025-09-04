@@ -160,23 +160,13 @@ def generate_hallucinations_from_qa_data(
             continue
 
         # Generate hallucinated answer with specified intensity
-        for _ in range(num_attempts := 100):
-            try:
-                result = generator.generate(
-                    context=context,
-                    question=question,
-                    answer=answer,
-                    intensity=intensity,
-                )
-            except Exception as e:
-                logger.error(f"Error during generation: {e}")
-                continue
-            break
-        else:
-            raise RuntimeError(
-                f"Failed to generate hallucination after {num_attempts} attempts. "
-                "Please try again."
+        try:
+            result = generator.generate(
+                context=context, question=question, answer=answer, intensity=intensity
             )
+        except Exception as e:
+            logger.error(f"Error during generation: {e}. Skipping...")
+            continue
 
         # Save the record
         record = dict(
