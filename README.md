@@ -1,15 +1,21 @@
-<a href="https://github.com/alexandrainst/factuality_eval">
-<img
-    src="https://filedn.com/lRBwPhPxgV74tO0rDoe8SpH/alexandra/alexandra-logo.jpeg"
-	width="239"
-	height="175"
-	align="right"
-/>
-</a>
+# Evaluation tools
 
-# Factuality Eval
+| Paper title | Authors | Affiliation | Published | Code | Summary | Comments | Languages | Tool |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| OpenFactCheck: A Unified Framework for Factuality Evaluation of LLMs | Iqbal, H., Wang, Y., Wang, M., Georgiev, G., Geng, J., Gurevych, I., & Nakov, P.  | MBZUAI (Mohamed bin Zayed University of Artificial Intelligence) | 2024-08 | https://github.com/mbzuai-nlp/openfactcheck | OpenFactCheck has 3 modules: \n\n- RESPONSEEVAL: customize fact-checking system and assess the factuality of all claims in an input document\n- LLMEVAL: assess overall factuality of an LLM\n- CHECKEREVAL: evaluate automatic fact-checking systems | They created two datasets: [FactQA](https://raw.githubusercontent.com/hasaniqbal777/OpenFactCheck/main/src/openfactcheck/templates/llm/questions.csv) (6480 questions) and [FactBench](https://raw.githubusercontent.com/hasaniqbal777/OpenFactCheck/main/src/openfactcheck/templates/factchecker/claims.jsonl) (4507 claims).  | English, Urdu | OpenFactCheck |
+| Loki: An Open-Source Tool for Fact Verification | Li, H., Han, X., Wang, H., Wang, Y., Wang, M., Xing, R., ... & Baldwin | LibrAI, MBZUAI, Monash University, The University of Melbourne | 2024-10 | https://github.com/Libr-AI/OpenFactVerification |  | https://loki.librai.tech/ | Multilingual | Loki |
+|  |  |  |  |  |  |  |  | FactScore |
+|  |  |  |  | https://www.comet.com/site/blog/selfcheckgpt-for-llm-evaluation/ |  | A blackbox hallucination detection method that relies solely on stochastic sampling of model responses. The core intuition of their method is that factually accurate responses are typically consistent and frequent, whereas hallucinated outputs tend to vary and contradict each other. |  | SelfCheckGPT |
+| Long-form factuality in large language models |  |  |  |  |  |  |  | LongForm SAFE |
+|  |  |  |  |  |  | Not open-source |  | Perplexity fact checker |
+| Hallucination to Truth: A Review of Fact-Checking and Factuality\n\nEvaluation in Large Language Models | Rahman, S. S., Islam, M. A., Alam, M. M., Zeba, M., Rahman, M. A., Chowa, S. S., ... & Azam, S. | United International University (Bangladesh),  Daffodil International University (Bangladesh), Charles Darwin University (Australia) | 2025-08 |  |  |  |  |  |
+| FACTTEST: FACTUALITY TESTING IN LARGE  LANGUAGE MODELS WITH FINITE-SAMPLE AND  DISTRIBUTION-FREE GUARANTEES | Fan Nie1 Xiaotian Hou2 Shuhang Lin2 James Zou1 Huaxiu Yao3 Linjun Zhang | Stanford University, 2Rutgers University, 3UNC-Chapel Hill | 2024-11 |  | Used to "finetune" models to not answer if the answer is likely to be false. |  |  |  |
+| Seq vs Seq: An Open Suite of Paired Encoders and Decoders |  |  |  |  | TinyLettuce is used to have a dataset consisting of hallunications and correct responses.\n\n*"**The Problem**: Training robust hallucination detection models requires large datasets of both correct and hallucinated responses. Manually creating such datasets is expensive and time-consuming.*\n\n***Our Solution****: LettuceDetect's synthetic data generation pipeline can generate realistic hallucinations from factual content."* |  |  |  |
+| Hallucination Risk Calculator & Prompt Re‑engineering Toolkit (OpenAI‑only) |  |  |  | https://hassana.io/readme.html | Calculate the risk of hallucination based on a prompt.\n\nBasically just entropy calculation?\n\nProblem is, which prompts should we supply? |  |  |  |
+| (Im)possibility of Automated Hallucination Detection in\n\nLarge Language Models |  |  |  |  | Not possible if trained only on correct samples (duh) |  |  |  |
+| HaluEval: A Large-Scale Hallucination Evaluation Benchmark for Large Language Models |  |  |  | https://github.com/RUCAIBox/HaluEval | Many citations |  |  |  |
 
-Evaluation of how factual/trustworthy LLMs are.
+# Evaluation benchmarks and datasets
 
 ______________________________________________________________________
 [![Code Coverage](https://img.shields.io/badge/Coverage-98%25-brightgreen.svg)](https://github.com/alexandrainst/factuality_eval/tree/main/tests)
@@ -18,122 +24,127 @@ ______________________________________________________________________
 [![LastCommit](https://img.shields.io/github/last-commit/alexandrainst/factuality_eval)](https://github.com/alexandrainst/factuality_eval/commits/main)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.0-4baaaa.svg)](https://github.com/alexandrainst/factuality_eval/blob/main/CODE_OF_CONDUCT.md)
 
-Developer:
 
-- Freja Thoresen (freja.thoresen@alexandra.dk)
-- Dan Saattrup Smart (dan.smart@alexandra.dk)
+| Paper title | Authors | Affiliation | Date | Code | Summary/comments | Dataset |
+| --- | --- | --- | --- | --- | --- | --- |
+|  |  |  |  |  |  | Snowball |
+|  |  |  |  |  |  | SelfAware |
+|  |  |  |  |  |  | FreshQA |
+|  |  |  |  |  |  | FacTool |
+|  |  |  |  |  |  | FELM |
+|  |  |  |  |  |  | Factcheck-Bench |
+|  |  |  |  |  |  | FactScore-Bio |
+|  |  |  |  |  | Human annotations | LLM-AGGREFACT |
+|  |  |  |  |  | Binary error detection | ReaLMistake |
+|  |  |  |  |  | Compute the ratio of factually supported sentences to the total response | **LEAF Fact-check Score** |
+|  |  |  |  |  | Measures the overlap between human-used and model-used knowledge | Knowledge F1 |
+|  |  |  |  |  | evaluates how much original content remains intact after hallucination correction | Presevation score |
+|  |  |  |  |  | Human annotations | LLM-AGGREFACT |
+|  |  |  |  |  | Binary error detection | ReaLMistake |
+|  |  |  |  |  | Compute the ratio of factually supported sentences to the total response | **LEAF Fact-check Score** |
+|  |  |  |  |  | Measures the overlap between human-used and model-used knowledge | Knowledge F1 |
+|  |  |  |  |  | evaluates how much original content remains intact after hallucination correction | Presevation score |
+|  |  |  |  |  | HotpotQA is a  released question-answering dataset that involves multi-hop reasoning over\n\nmultiple paragraphs of information to produce an answer. A successful model must not only report\n\nanswers as yes/no or a span within the text but also identify supporting facts. | HotpotQA |
+|  |  |  |  |  |  | SimpleQA |
+|  |  |  |  |  | Possibly not public/open. | PersonQA |
+| TRUSTSCORE: REFERENCE-FREE EVALUATION OFLLM RESPONSE TRUSTWORTHINESS | Danna Zheng, Danyang Liu, Mirella Lapata, Jeff Z. Pan | University of Edinburgh,\n\nHuawei Edinburgh Research Centre |  |  |  | TrustScore |
+| Know What You Don't Know: Unanswerable Questions for SQuAD |  |  | 2018-11 | https://rajpurkar.github.io/SQuAD-explorer/ | Many  | SQuAD |
+|  |  |  |  |  | is **an automatic evaluation metric for factual precision in long-form text generation**. It uses large language models and retrieval to break down generations into atomic facts and then measure the correctness with respect to a knowledge source (like Wikipedia). | FactScore |
 
+# Papers from Dan
 
-## Setup
+[Survey on Factuality in Large Language Models](https://dl.acm.org/doi/10.1145/3742420 "https://dl.acm.org/doi/10.1145/3742420")
 
-### Installation
+[Trustworthiness in Retrieval-Augmented Generation Systems: A Survey](http://arxiv.org/abs/2409.10102 "http://arxiv.org/abs/2409.10102")
 
-1. Run `make install`, which sets up a virtual environment and all Python dependencies therein.
-2. Run `source .venv/bin/activate` to activate the virtual environment.
-3. (Optional) Run `make install-pre-commit`, which installs pre-commit hooks for linting, formatting and type checking.
+[SciTrust: Evaluating the Trustworthiness of Large Language Models for Science](https://ieeexplore.ieee.org/document/10820709 "https://ieeexplore.ieee.org/document/10820709")
 
+[WikiContradict: A Benchmark for Evaluating LLMs on Real-World Knowledge Conflicts from Wikipedia](http://arxiv.org/abs/2406.13805 "http://arxiv.org/abs/2406.13805")
 
-### Adding and Removing Packages
+[Identifying Factual Inconsistencies in Summaries: Grounding LLM Inference via Task Taxonomy](http://arxiv.org/abs/2402.12821 "http://arxiv.org/abs/2402.12821")
 
-To install new PyPI packages, run:
-```
-uv add <package-name>
-```
+[Factual consistency evaluation of summarization in the Era of large language models](http://arxiv.org/abs/2402.13758 "http://arxiv.org/abs/2402.13758")
 
-To remove them again, run:
-```
-uv remove <package-name>
-```
+[FENICE: Factuality Evaluation of summarization based on Natural language Inference and Claim Extraction](http://arxiv.org/abs/2403.02270 "http://arxiv.org/abs/2403.02270")
 
-To show all installed packages, run:
-```
-uv pip list
-```
+[SIFiD: Reassess Summary Factual Inconsistency Detection with LLM](http://arxiv.org/abs/2403.07557 "http://arxiv.org/abs/2403.07557")
 
+[TofuEval: Evaluating Hallucinations of LLMs on Topic-Focused Dialogue Summarization](http://arxiv.org/abs/2402.13249 "http://arxiv.org/abs/2402.13249")
 
-## All Built-in Commands
+[Factuality of Large Language Models: A Survey](http://arxiv.org/abs/2402.02420 "http://arxiv.org/abs/2402.02420")
 
-The project includes the following convenience commands:
+[FactPICO: Factuality Evaluation for Plain Language Summarization of Medical Evidence](http://arxiv.org/abs/2402.11456 "http://arxiv.org/abs/2402.11456")
 
-- `make install`: Install the project and its dependencies in a virtual environment.
-- `make install-pre-commit`: Install pre-commit hooks for linting, formatting and type checking.
-- `make lint`: Lint the code using `ruff`.
-- `make format`: Format the code using `ruff`.
-- `make type-check`: Type check the code using `mypy`.
-- `make test`: Run tests using `pytest` and update the coverage badge in the readme.
-- `make docker`: Build a Docker image and run the Docker container.
-- `make docs`: View documentation locally in a browser.
-- `make publish-docs`: Publish documentation to GitHub Pages.
-- `make tree`: Show the project structure as a tree.
+[TrustScore: Reference-Free Evaluation of LLM Response Trustworthiness](http://arxiv.org/abs/2402.12545 "http://arxiv.org/abs/2402.12545")
 
+# Why are LLMs not factual?
 
-## A Word on Modules and Scripts
-In the `src` directory there are two subdirectories, `factuality_eval`
-and `scripts`. This is a brief explanation of the differences between the two.
+- LLMs do not know what they do not know, sometimes overestimate their capacities and confidently output unknown information, leading to false responses.
 
-### Modules
-All Python files in the `factuality_eval` directory are _modules_
-internal to the project package. Examples here could be a general data loading script,
-a definition of a model, or a training function. Think of modules as all the building
-blocks of a project.
+# The art of saying "I don't know"
 
-When a module is importing functions/classes from other modules we use the _relative
-import_ notation - here's an example:
+(Check paper from Friday on multiple questionnaires, where it sometimes says it doesn't know the answer.)
 
-```
-from .other_module import some_function
-```
+# Difficulties with evaluating factuality
 
-### Scripts
-Python files in the `scripts` folder are scripts, which are short code snippets that
-are _external_ to the project package, and which is meant to actually run the code. As
-such, _only_ scripts will be called from the terminal. An analogy here is that the
-internal `numpy` code are all modules, but the Python code you write where you import
-some `numpy` functions and actually run them, that a script.
+- Studies assessing language models’ factuality or evaluating whether the methods are effective to mitigate model hallucinations use different datasets and metrics.
+    - This makes it difficult to compare, in the same conditions, the factuality of different models as well as to compare the effectiveness of different factuality enhancement approaches.
 
-When importing module functions/classes when you're in a script, you do it like you
-would normally import from any other package:
+# Research goals
 
-```
-from factuality_eval import some_function
-```
+- Hvad vil vi måle
 
-Note that this is also how we import functions/classes in tests, since each test Python
-file is also a Python script, rather than a module.
+- Hvilke metoder vil vi bruge
 
+- Hvilke dataset er relevante
 
-## Features
+We don't really care about how factual the LLM's are, but we want to know can we trust them. This means that we're not trying to test which LLM is most likeliy to win in Jeapordy, however we are more interested in testing which one would lie or cheat in Jeapordy. But at the same time, we do not want a metric that will be biased in a way that the LLM always answers I dont know, and gets a good score for that.
 
-### Docker Setup
+# Challenges
 
-A Dockerfile is included in the new repositories, which by default runs
-`src/scripts/main.py`. You can build the Docker image and run the Docker container by
-running `make docker`.
+Metric bias (**I. Augenstein, T. Baldwin, M. Cha, T. Chakraborty, G. L. Ciampaglia, D. Corney, R. DiResta, E. Ferrara, S. Hale, A. Halevy et al., “Factuality challenges in the era of large language models and opportunities for factchecking,” Nature Machine Intelligence, vol. 6, no. 8, pp. 852–863, 2024.)**
 
-### Automatic Documentation
+Dependence on high quality annotated evidence datasets
 
-Run `make docs` to create the documentation in the `docs` folder, which is based on
-your docstrings in your code. You can publish this documentation to Github Pages by
-running `make publish-docs`. To add more manual documentation pages, simply add more
-Markdown files to the `docs` directory; this will automatically be included in the
-documentation.
+# Overall strategies
 
-### Automatic Test Coverage Calculation
+Using LLMs themselves as evaluators (LLM-as-a-judge). Often closely just as good as humans.
 
-Run `make test` to test your code, which also updates the "coverage badge" in the
-README, showing you how much of your code base that is currently being tested.
+RAG
 
-### Continuous Integration
+Human evaluation
 
-Github CI pipelines are included in the repo, running all the tests in the `tests`
-directory, as well as building online documentation, if Github Pages has been enabled
-for the repository (can be enabled on Github in the repository settings).
+Detecting hallucinations in language models is challenging. There are three general approaches:
 
-### Code Spaces
+- **Measuring token-level probability distributions** for indications that a model is “confused.” Though sometimes effective, these methods rely on model internals being accessible—which is often not the case when working with hosted LLMs.
+- **Referencing external fact-verification systems**, like a database or document store. These methods are great for RAG-style use-cases, but they are only effective if you have a useful dataset and the infrastructure to use it.
+- **Using LLM-as-a-judge techniques** to assess whether or not a model hallucinated. These techniques are becoming standard in the LLM ecosystem, but as I’ll explain throughout this piece, using them effectively requires a deceptive amount of work.
 
-Code Spaces is a new feature on Github, that allows you to develop on a project
-completely in the cloud, without having to do any local setup at all. This repo comes
-included with a configuration file for running code spaces on Github. When hosted on
-`alexandrainst/factuality_eval` then simply press the `<> Code` button
-and add a code space to get started, which will open a VSCode window directly in your
-browser.
+The problem with many LLM-as-a-Judge techniques is that they tend towards two polarities: they are either too simple, using a basic zero-shot approach, or they are wildly complex, involving multiple LLMs interacting via multi-turn reasoning.
+
+# Datasets
+
+- HotpotQA
+- SimpleQA
+- PersonQA (possibly not public)
+- SQuAD
+
+# Hallucination
+
+## Definition of hallucinations
+
+Hallucinations are a feature, not a bug. When is a LLM hallucinating, and when is it creating?
+
+## Hallucination theory
+
+- Entropy measurements (need output probability distribution)
+- Er der teoretisk grundlag for at man kan teste factuality?
+
+## Hallucination detectors
+
+- Paper: Not possible if trained only on correct samples (duh)
+- SelfCheckGPT: Voting system
+
+## SelfCheckGPT
+
+Check for variance i output af ens model, er det meget stokastisk / random eller konvergerer modellen mod det samme svar?
