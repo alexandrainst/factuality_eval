@@ -12,7 +12,7 @@
 Evaluation of how factual/trustworthy LLMs are.
 
 ______________________________________________________________________
-[![Code Coverage](https://img.shields.io/badge/Coverage-0%25-red.svg)](https://github.com/alexandrainst/factuality_eval/tree/main/tests)
+[![Code Coverage](https://img.shields.io/badge/Coverage-98%25-brightgreen.svg)](https://github.com/alexandrainst/factuality_eval/tree/main/tests)
 [![Documentation](https://img.shields.io/badge/docs-passing-green)](https://alexandrainst.github.io/factuality_eval)
 [![License](https://img.shields.io/github/license/alexandrainst/factuality_eval)](https://github.com/alexandrainst/factuality_eval/blob/main/LICENSE)
 [![LastCommit](https://img.shields.io/github/last-commit/alexandrainst/factuality_eval)](https://github.com/alexandrainst/factuality_eval/commits/main)
