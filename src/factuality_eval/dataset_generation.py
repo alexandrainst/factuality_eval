@@ -6,58 +6,133 @@ from collections import defaultdict
 import numpy as np
 from datasets import Dataset, load_dataset
 from lettucedetect import HallucinationGenerator
-from omegaconf import DictConfig
 from tqdm.auto import tqdm
 
 logger = logging.getLogger(__name__)
 
 
-def generate_hallucination_dataset(config: DictConfig) -> None:
-    """An example function for your project.
+def load_qa_data(
+    base_dataset_id: str,
+    split: str,
+    context_key: str,
+    question_key: str,
+    answer_key: str,
+    squad_format: bool,
+    testing: bool,
+) -> tuple[list[list[str]], list[str], list[str]]:
+    """Load the base dataset.
 
     Args:
-        config:
-            The Hydra config for your project.
+        base_dataset_id:
+            The dataset ID in the format "dataset_name:subset_name" or "dataset_name".
+        split:
+            The dataset split to load (e.g., "train", "validation", "test").
+        context_key:
+            The key in the dataset corresponding to the context.
+        question_key:
+            The key in the dataset corresponding to the question.
+        answer_key:
+            The key in the dataset corresponding to the answer.
+        squad_format:
+            Whether the answers are in SQuAD format.
+        testing:
+            If True, only load a small subset of the data for testing purposes.
+
+    Returns:
+        A tuple of (contexts, questions, answers).
     """
-    logger.info(f"Loading base dataset {config.base_dataset.id!r}...")
-    dataset_id = config.base_dataset.id.split(":")[0]
-    subset = (
-        config.base_dataset.id.split(":")[1] if ":" in config.base_dataset.id else None
-    )
-    ds = load_dataset(path=dataset_id, name=subset, split=config.base_dataset.split)
+    logger.info(f"Loading base dataset {base_dataset_id!r}...")
+    dataset_id = base_dataset_id.split(":")[0]
+    subset = base_dataset_id.split(":")[1] if ":" in base_dataset_id else None
+    ds = load_dataset(path=dataset_id, name=subset, split=split)
 
     logger.info("Preparing dataset...")
-    contexts: list[list[str]] = [[ctx] for ctx in ds[config.base_dataset.context_key]]
-    questions: list[str] = ds[config.base_dataset.question_key]
-    if config.base_dataset.squad_format:
+    contexts: list[list[str]] = [[ctx] for ctx in ds[context_key]]
+    questions: list[str] = ds[question_key]
+    if squad_format:
         answers: list[str] = [
-            dict(answer_dict)["text"][0]
-            for answer_dict in ds[config.base_dataset.answer_key]
+            dict(answer_dict)["text"][0] for answer_dict in ds[answer_key]
         ]
     else:
-        answers = ds[config.base_dataset.answer_key]
+        answers = ds[answer_key]
 
-    if config.testing:
+    if testing:
         logger.info("Truncating dataset for testing...")
         contexts = contexts[:10]
         questions = questions[:10]
         answers = answers[:10]
 
-    logger.info("Sampling hallucination intensities...")
-    np.random.seed(42)
-    mean = config.beta_distribution.mean
-    std = config.beta_distribution.std
+    return contexts, questions, answers
+
+
+def sample_hallucination_intensities(mean: float, std: float, size: int) -> list[float]:
+    """Sample hallucination intensities from a clipped Beta distribution.
+
+    Args:
+        mean:
+            The mean of the Beta distribution.
+        std:
+            The standard deviation of the Beta distribution.
+        size:
+            The number of samples to generate.
+
+    Returns:
+        A list of sampled hallucination intensities.
+    """
+    logger.info(
+        f"Sampling hallucination intensities with mean {mean:.2f} and standard "
+        f"deviation {std:.2f}..."
+    )
+
+    # Compute the alpha and beta parameters of the Beta distribution
     n = mean * (1 - mean) / (std**2)
     alpha = mean * n
     beta = (1 - mean) * n
-    intensities = np.clip(
-        np.random.beta(a=alpha, b=beta, size=len(contexts)) + 0.1, a_min=0.1, a_max=1.0
-    )
 
+    # Add a small constant to avoid zero intensities
+    epsilon = 1e-6
+    alpha = max(alpha, epsilon)
+    beta = max(beta, epsilon)
+
+    # Sample from the Beta distribution. We add 0.1 as the minimum intensity is 0.1, and
+    # the Beta distribution is defined on [0, 1].
+    intensities = np.random.beta(a=alpha, b=beta, size=size) + 0.1
+
+    # Clip the intensities to be in the range [0.1, 1.0], as that's the allowed range
+    intensities = np.clip(intensities, a_min=0.1, a_max=1.0)
+
+    return intensities.tolist()
+
+
+def generate_hallucinations_from_qa_data(
+    contexts: list[list[str]],
+    questions: list[str],
+    answers: list[str],
+    intensities: list[float],
+    model: str,
+    temperature: float,
+) -> Dataset:
+    """Generate hallucinations from given QA data.
+
+    Args:
+        contexts:
+            A list of contexts, where each context is a list of strings.
+        questions:
+            A list of questions corresponding to the contexts.
+        answers:
+            A list of answers corresponding to the questions.
+        intensities:
+            A list of hallucination intensities for each QA pair.
+        model:
+            The model name to use for hallucination generation.
+        temperature:
+            The temperature to use for the model during generation.
+
+    Returns:
+        A Dataset containing both original and hallucinated QA pairs.
+    """
     logger.info("Generating hallucinations...")
-    generator = HallucinationGenerator(
-        model=config.model, temperature=config.temperature
-    )
+    generator = HallucinationGenerator(model=model, temperature=temperature)
     data_dict: dict[str, list] = defaultdict(list)
 
     for context, question, answer, intensity in zip(
@@ -83,8 +158,4 @@ def generate_hallucination_dataset(config: DictConfig) -> None:
         data_dict["intensity"].append(intensity)
 
     generated_dataset = Dataset.from_dict(mapping=data_dict)
-
-    logger.info("Pushing dataset to the Hub...")
-    target_dataset_name = config.base_dataset.id.split("/")[-1].replace(":", "-")
-    target_repo = f"{config.hub_organisation}/{target_dataset_name}-hallucinated"
-    generated_dataset.push_to_hub(repo_id=target_repo, private=config.private)
+    return generated_dataset
