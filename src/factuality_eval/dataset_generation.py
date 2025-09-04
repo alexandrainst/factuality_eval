@@ -160,14 +160,17 @@ def generate_hallucinations_from_qa_data(
             continue
 
         # Generate hallucinated answer with specified intensity
-        for idx in range(num_attempts := 100):
-            if idx > 0:
-                logger.warning(
-                    f"Failed to generate hallucinations on attempt {idx}. Retrying..."
+        for _ in range(num_attempts := 100):
+            try:
+                result = generator.generate(
+                    context=context,
+                    question=question,
+                    answer=answer,
+                    intensity=intensity,
                 )
-            result = generator.generate(
-                context=context, question=question, answer=answer, intensity=intensity
-            )
+            except Exception as e:
+                logger.error(f"Error during generation: {e}")
+                continue
             break
         else:
             raise RuntimeError(
