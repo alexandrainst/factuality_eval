@@ -5,6 +5,7 @@ Usage:
 """
 
 import logging
+from pathlib import Path
 
 import hydra
 from dotenv import load_dotenv
@@ -31,6 +32,10 @@ def main(config: DictConfig) -> None:
     """
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+    target_dataset_name = (
+        f"{config.base_dataset.id.split('/')[-1].replace(':', '-')}-hallucinated"
+    )
+
     # Generate the hallucination dataset
     contexts, questions, answers = load_qa_data(
         base_dataset_id=config.base_dataset.id,
@@ -53,12 +58,14 @@ def main(config: DictConfig) -> None:
         intensities=intensities,
         model=config.model,
         temperature=config.temperature,
+        output_jsonl_path=Path("data", "final", f"{target_dataset_name}.jsonl"),
     )
 
     # Push the generated dataset to the Hugging Face Hub
-    target_dataset_name = config.base_dataset.id.split("/")[-1].replace(":", "-")
-    target_repo = f"{config.hub_organisation}/{target_dataset_name}-hallucinated"
-    dataset.push_to_hub(repo_id=target_repo, private=config.private)
+    dataset.push_to_hub(
+        repo_id=f"{config.hub_organisation}/{target_dataset_name}",
+        private=config.private,
+    )
 
 
 if __name__ == "__main__":

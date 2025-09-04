@@ -1,7 +1,9 @@
 """Automatic generation of hallucination datasets."""
 
+import hashlib
+import json
 import logging
-from collections import defaultdict
+from pathlib import Path
 
 import numpy as np
 from datasets import Dataset, load_dataset
@@ -111,6 +113,7 @@ def generate_hallucinations_from_qa_data(
     intensities: list[float],
     model: str,
     temperature: float,
+    output_jsonl_path: Path,
 ) -> Dataset:
     """Generate hallucinations from given QA data.
 
@@ -127,35 +130,72 @@ def generate_hallucinations_from_qa_data(
             The model name to use for hallucination generation.
         temperature:
             The temperature to use for the model during generation.
+        output_jsonl_path:
+            The path to save the generated dataset in JSONL format.
 
     Returns:
         A Dataset containing both original and hallucinated QA pairs.
     """
     logger.info("Generating hallucinations...")
+
     generator = HallucinationGenerator(model=model, temperature=temperature)
-    data_dict: dict[str, list] = defaultdict(list)
+    records: list[dict] = list()
+
+    # Load the existing dataset if it exists
+    if output_jsonl_path.exists():
+        logger.info(f"Loading existing dataset from {output_jsonl_path}...")
+        with output_jsonl_path.open() as f:
+            records = [json.loads(line.strip()) for line in f if line.strip()]
+
+    # Extract the list of hashes for quick lookups
+    hashes = {record["hash"] for record in records}
 
     for context, question, answer, intensity in zip(
         tqdm(contexts), questions, answers, intensities
     ):
+        hash_ = generate_hash(context=context, question=question, answer=answer)
+        if hash_ in hashes:
+            continue
+
         # Generate hallucinated answer with specified intensity
         result = generator.generate(
             context=context, question=question, answer=answer, intensity=intensity
         )
 
-        # Original non-hallucinated example
-        data_dict["context"].append(context)
-        data_dict["question"].append(question)
-        data_dict["answer"].append(answer)
-        data_dict["hallucination"].append(False)
-        data_dict["intensity"].append(float("nan"))
+        # Save the record
+        record = dict(
+            hash=hash_,
+            context=context,
+            question=question,
+            answer=answer,
+            hallucinated_answer=result["hallucinated_answer"],
+            intensity=intensity,
+        )
+        records.append(record)
+        hashes.add(hash_)
+        with output_jsonl_path.open("a") as f:
+            f.write(json.dumps(record) + "\n")
 
-        # Hallucinated example
-        data_dict["context"].append(context)
-        data_dict["question"].append(question)
-        data_dict["answer"].append(result["hallucinated_answer"])
-        data_dict["hallucination"].append(True)
-        data_dict["intensity"].append(intensity)
-
+    # Convert records to a Dataset
+    keys = records[0].keys()
+    data_dict = {key: [record[key] for record in records] for key in keys}
     generated_dataset = Dataset.from_dict(mapping=data_dict)
+
     return generated_dataset
+
+
+def generate_hash(context: list[str], question: str, answer: str) -> str:
+    """Generate a unique hash for a QA pair.
+
+    Args:
+        context:
+            The context as a list of strings.
+        question:
+            The question string.
+        answer:
+            The answer string.
+
+    Returns:
+        A unique hash string for the QA pair.
+    """
+    return hashlib.md5((context[0] + question + answer).encode("utf-8")).hexdigest()
