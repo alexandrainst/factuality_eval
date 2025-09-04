@@ -136,6 +136,7 @@ def test_generate_hallucinations_from_qa_data(
         intensities=intensities,
         model=model,
         temperature=temperature,
+        output_jsonl_path=None,
     )
     assert len(dataset) == 2 * len(contexts), (
         f"Expected dataset length {2 * len(contexts)}, but got {len(dataset)}."

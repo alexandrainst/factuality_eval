@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -113,7 +114,7 @@ def generate_hallucinations_from_qa_data(
     intensities: list[float],
     model: str,
     temperature: float,
-    output_jsonl_path: Path,
+    output_jsonl_path: Path | None,
 ) -> Dataset:
     """Generate hallucinations from given QA data.
 
@@ -131,7 +132,8 @@ def generate_hallucinations_from_qa_data(
         temperature:
             The temperature to use for the model during generation.
         output_jsonl_path:
-            The path to save the generated dataset in JSONL format.
+            The path to save the generated dataset in JSONL format, or None to skip
+            saving.
 
     Returns:
         A Dataset containing both original and hallucinated QA pairs.
@@ -142,7 +144,7 @@ def generate_hallucinations_from_qa_data(
     records: list[dict] = list()
 
     # Load the existing dataset if it exists
-    if output_jsonl_path.exists():
+    if output_jsonl_path is not None and output_jsonl_path.exists():
         logger.info(f"Loading existing dataset from {output_jsonl_path}...")
         with output_jsonl_path.open() as f:
             records = [json.loads(line.strip()) for line in f if line.strip()]
@@ -173,12 +175,26 @@ def generate_hallucinations_from_qa_data(
         )
         records.append(record)
         hashes.add(hash_)
-        with output_jsonl_path.open("a") as f:
-            f.write(json.dumps(record) + "\n")
+        if output_jsonl_path is not None:
+            with output_jsonl_path.open("a") as f:
+                f.write(json.dumps(record) + "\n")
 
     # Convert records to a Dataset
-    keys = records[0].keys()
-    data_dict = {key: [record[key] for record in records] for key in keys}
+    data_dict: dict[str, list] = defaultdict(list)
+    for record in records:
+        # Non-hallucinated example
+        data_dict["context"].append(record["context"])
+        data_dict["question"].append(record["question"])
+        data_dict["answer"].append(record["answer"])
+        data_dict["intensity"].append(float("nan"))
+        data_dict["hallucination"].append(False)
+
+        # Hallucinated example
+        data_dict["context"].append(record["context"])
+        data_dict["question"].append(record["question"])
+        data_dict["answer"].append(record["hallucinated_answer"])
+        data_dict["intensity"].append(record["intensity"])
+        data_dict["hallucination"].append(True)
     generated_dataset = Dataset.from_dict(mapping=data_dict)
 
     return generated_dataset
