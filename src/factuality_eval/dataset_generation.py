@@ -160,9 +160,20 @@ def generate_hallucinations_from_qa_data(
             continue
 
         # Generate hallucinated answer with specified intensity
-        result = generator.generate(
-            context=context, question=question, answer=answer, intensity=intensity
-        )
+        for idx in range(num_attempts := 100):
+            if idx > 0:
+                logger.warning(
+                    f"Failed to generate hallucinations on attempt {idx}. Retrying..."
+                )
+            result = generator.generate(
+                context=context, question=question, answer=answer, intensity=intensity
+            )
+            break
+        else:
+            raise RuntimeError(
+                f"Failed to generate hallucination after {num_attempts} attempts. "
+                "Please try again."
+            )
 
         # Save the record
         record = dict(
