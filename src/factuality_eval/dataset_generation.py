@@ -168,6 +168,13 @@ def generate_hallucinations_from_qa_data(
             logger.error(f"Error during generation: {e}. Skipping...")
             continue
 
+        # If the hallucinated answer is identical to the original answer, skip it
+        if result["hallucinated_answer"].strip() == answer.strip():
+            logger.warning(
+                "Hallucinated answer is identical to the original answer. Skipping..."
+            )
+            continue
+
         # Save the record
         record = dict(
             hash=hash_,
