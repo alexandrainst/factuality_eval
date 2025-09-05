@@ -1,0 +1,23 @@
+defaults:
+  - override hydra/job_logging: custom
+  - _self_
+
+base_dataset:
+  id: alexandrainst/multi-wiki-qa:da
+  split: train
+  context_key: context
+  question_key: question
+  answer_key: answers
+  squad_format: true
+
+model: gpt-4.1-mini
+temperature: 1.0
+
+beta_distribution:
+  mean: 0.2
+  std: 0.15
+
+hub_organisation: alexandrainst
+private: true
+
+testing: false

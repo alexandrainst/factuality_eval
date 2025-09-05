@@ -1,4 +1,16 @@
-# Evaluation tools
+# Factuality Evaluation of LLMs
+
+______________________________________________________________________
+[![Code Coverage](https://img.shields.io/badge/Coverage-91%25-green.svg)](https://github.com/alexandrainst/factuality_eval/tree/main/tests)
+[![Documentation](https://img.shields.io/badge/docs-passing-green)](https://alexandrainst.github.io/factuality_eval)
+[![License](https://img.shields.io/github/license/alexandrainst/factuality_eval)](https://github.com/alexandrainst/factuality_eval/blob/main/LICENSE)
+[![LastCommit](https://img.shields.io/github/last-commit/alexandrainst/factuality_eval)](https://github.com/alexandrainst/factuality_eval/commits/main)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.0-4baaaa.svg)](https://github.com/alexandrainst/factuality_eval/blob/main/CODE_OF_CONDUCT.md)
+
+
+## Literature Review
+
+### Evaluation Tools
 
 | Paper title | Authors | Affiliation | Published | Code | Summary | Comments | Languages | Tool |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -15,7 +27,8 @@
 | (Im)possibility of Automated Hallucination Detection in\n\nLarge Language Models |  |  |  |  | Not possible if trained only on correct samples (duh) |  |  |  |
 | HaluEval: A Large-Scale Hallucination Evaluation Benchmark for Large Language Models |  |  |  | https://github.com/RUCAIBox/HaluEval | Many citations |  |  |  |
 
-# Evaluation benchmarks and datasets
+
+### Evaluation Benchmarks and Datasets
 
 | Paper title | Authors | Affiliation | Date | Code | Summary/comments | Dataset |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -43,7 +56,8 @@
 | Know What You Don't Know: Unanswerable Questions for SQuAD |  |  | 2018-11 | https://rajpurkar.github.io/SQuAD-explorer/ | Many  | SQuAD |
 |  |  |  |  |  | is **an automatic evaluation metric for factual precision in long-form text generation**. It uses large language models and retrieval to break down generations into atomic facts and then measure the correctness with respect to a knowledge source (like Wikipedia). | FactScore |
 
-# Papers from Dan
+
+### Papers from Dan
 
 [Survey on Factuality in Large Language Models](https://dl.acm.org/doi/10.1145/3742420 "https://dl.acm.org/doi/10.1145/3742420")
 
@@ -69,74 +83,97 @@
 
 [TrustScore: Reference-Free Evaluation of LLM Response Trustworthiness](http://arxiv.org/abs/2402.12545 "http://arxiv.org/abs/2402.12545")
 
-# Why are LLMs not factual?
 
-- LLMs do not know what they do not know, sometimes overestimate their capacities and confidently output unknown information, leading to false responses.
+## Why are LLMs not factual?
 
-# The art of saying "I don't know"
+- LLMs do not know what they do not know, sometimes overestimate their capacities and
+  confidently output unknown information, leading to false responses.
 
-(Check paper from Friday on multiple questionnaires, where it sometimes says it doesn't know the answer.)
+## The art of saying "I don't know"
 
-# Difficulties with evaluating factuality
+(Check paper from Friday on multiple questionnaires, where it sometimes says it doesn't
+know the answer.)
 
-- Studies assessing language models’ factuality or evaluating whether the methods are effective to mitigate model hallucinations use different datasets and metrics.
-    - This makes it difficult to compare, in the same conditions, the factuality of different models as well as to compare the effectiveness of different factuality enhancement approaches.
+## Difficulties with evaluating factuality
 
-# Research goals
+- Studies assessing language models’ factuality or evaluating whether the methods are
+  effective to mitigate model hallucinations use different datasets and metrics.
+	- This makes it difficult to compare, in the same conditions, the factuality of
+	  different models as well as to compare the effectiveness of different factuality
+	  enhancement approaches.
+
+## Research goals
 
 - Hvad vil vi måle
-
 - Hvilke metoder vil vi bruge
-
 - Hvilke dataset er relevante
 
-We don't really care about how factual the LLM's are, but we want to know can we trust them. This means that we're not trying to test which LLM is most likeliy to win in Jeapordy, however we are more interested in testing which one would lie or cheat in Jeapordy. But at the same time, we do not want a metric that will be biased in a way that the LLM always answers I dont know, and gets a good score for that.
+We don't really care about how factual the LLM's are, but we want to know can we trust
+them. This means that we're not trying to test which LLM is most likeliy to win in
+Jeapordy, however we are more interested in testing which one would lie or cheat in
+Jeapordy. But at the same time, we do not want a metric that will be biased in a way
+that the LLM always answers I dont know, and gets a good score for that.
 
-# Challenges
+## Challenges
 
-Metric bias (**I. Augenstein, T. Baldwin, M. Cha, T. Chakraborty, G. L. Ciampaglia, D. Corney, R. DiResta, E. Ferrara, S. Hale, A. Halevy et al., “Factuality challenges in the era of large language models and opportunities for factchecking,” Nature Machine Intelligence, vol. 6, no. 8, pp. 852–863, 2024.)**
+Metric bias (**I. Augenstein, T. Baldwin, M. Cha, T. Chakraborty, G. L. Ciampaglia, D.
+Corney, R. DiResta, E. Ferrara, S. Hale, A. Halevy et al., “Factuality challenges in the
+era of large language models and opportunities for factchecking,” Nature Machine
+Intelligence, vol. 6, no. 8, pp. 852–863, 2024.)**
 
-Dependence on high quality annotated evidence datasets
+Dependence on high quality annotated evidence datasets.
 
-# Overall strategies
+## Overall strategies
 
-Using LLMs themselves as evaluators (LLM-as-a-judge). Often closely just as good as humans.
+Using LLMs themselves as evaluators (LLM-as-a-judge). Often closely just as good as
+humans.
 
 RAG
 
 Human evaluation
 
-Detecting hallucinations in language models is challenging. There are three general approaches:
+Detecting hallucinations in language models is challenging. There are three general
+approaches:
 
-- **Measuring token-level probability distributions** for indications that a model is “confused.” Though sometimes effective, these methods rely on model internals being accessible—which is often not the case when working with hosted LLMs.
-- **Referencing external fact-verification systems**, like a database or document store. These methods are great for RAG-style use-cases, but they are only effective if you have a useful dataset and the infrastructure to use it.
-- **Using LLM-as-a-judge techniques** to assess whether or not a model hallucinated. These techniques are becoming standard in the LLM ecosystem, but as I’ll explain throughout this piece, using them effectively requires a deceptive amount of work.
+- **Measuring token-level probability distributions** for indications that a model is
+  “confused.” Though sometimes effective, these methods rely on model internals being
+  accessible—which is often not the case when working with hosted LLMs.
+- **Referencing external fact-verification systems**, like a database or document store.
+  These methods are great for RAG-style use-cases, but they are only effective if you
+  have a useful dataset and the infrastructure to use it.
+- **Using LLM-as-a-judge techniques** to assess whether or not a model hallucinated.
+  These techniques are becoming standard in the LLM ecosystem, but as I’ll explain
+  throughout this piece, using them effectively requires a deceptive amount of work.
 
-The problem with many LLM-as-a-Judge techniques is that they tend towards two polarities: they are either too simple, using a basic zero-shot approach, or they are wildly complex, involving multiple LLMs interacting via multi-turn reasoning.
+The problem with many LLM-as-a-Judge techniques is that they tend towards two
+polarities: they are either too simple, using a basic zero-shot approach, or they are
+wildly complex, involving multiple LLMs interacting via multi-turn reasoning.
 
-# Datasets
+## Datasets
 
 - HotpotQA
 - SimpleQA
 - PersonQA (possibly not public)
 - SQuAD
 
-# Hallucination
+## Hallucination
 
-## Definition of hallucinations
+### Definition of hallucinations
 
-Hallucinations are a feature, not a bug. When is a LLM hallucinating, and when is it creating?
+Hallucinations are a feature, not a bug. When is a LLM hallucinating, and when is it
+creating?
 
-## Hallucination theory
+### Hallucination theory
 
 - Entropy measurements (need output probability distribution)
 - Er der teoretisk grundlag for at man kan teste factuality?
 
-## Hallucination detectors
+### Hallucination detectors
 
 - Paper: Not possible if trained only on correct samples (duh)
 - SelfCheckGPT: Voting system
 
-## SelfCheckGPT
+### SelfCheckGPT
 
-Check for variance i output af ens model, er det meget stokastisk / random eller konvergerer modellen mod det samme svar?
+Check for variance i output af ens model, er det meget stokastisk / random eller
+konvergerer modellen mod det samme svar?
