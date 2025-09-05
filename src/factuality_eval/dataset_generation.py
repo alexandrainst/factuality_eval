@@ -168,13 +168,6 @@ def generate_hallucinations_from_qa_data(
             logger.error(f"Error during generation: {e}. Skipping...")
             continue
 
-        # If the hallucinated answer is identical to the original answer, skip it
-        if result["hallucinated_answer"].strip() == answer.strip():
-            logger.warning(
-                "Hallucinated answer is identical to the original answer. Skipping..."
-            )
-            continue
-
         # Save the record
         record = dict(
             hash=hash_,
@@ -189,6 +182,13 @@ def generate_hallucinations_from_qa_data(
         if output_jsonl_path is not None:
             with output_jsonl_path.open("a") as f:
                 f.write(json.dumps(record) + "\n")
+
+    # Remove records where the hallucinated answer is identical to the original answer
+    records = [
+        record
+        for record in records
+        if record["hallucinated_answer"].strip() != record["answer"].strip()
+    ]
 
     # Convert records to a Dataset
     data_dict: dict[str, list] = defaultdict(list)
