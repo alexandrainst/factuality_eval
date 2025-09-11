@@ -21,6 +21,7 @@ def detect_hallucinations(
     detector = HallucinationDetector(method="transformer", model_path=model)
 
     predict_answers = []
+    all_hallucinated_parts = []
     for context, question, answer, hallucinated_parts in zip(
         dataset["train"]["context"],
         dataset["train"]["question"],
@@ -33,9 +34,10 @@ def detect_hallucinations(
         )
 
         predict_answers.append(predict_answer)
+        all_hallucinated_parts.append(hallucinated_parts)
 
     data_dict: dict[str, list] = defaultdict(list)
     data_dict["predict_answers"] = predict_answers
-    data_dict["ground_truth"] = hallucinated_parts
+    data_dict["ground_truth"] = all_hallucinated_parts
 
     return data_dict
