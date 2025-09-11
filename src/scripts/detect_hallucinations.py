@@ -1,7 +1,7 @@
-"""Evaluate a hallucinations.
+"""Detect hallucinations.
 
 Usage:
-    uv run src/scripts/evaluate_hallucination.py <config_key>=<config_value> ...
+    uv run src/scripts/detect_hallucinations.py <config_key>=<config_value> ...
 """
 
 import json
@@ -13,7 +13,7 @@ from datasets import load_dataset
 from dotenv import load_dotenv
 from omegaconf import DictConfig
 
-from factuality_eval.detect_hallucinations import detect_hallucinations
+from factuality_eval.hallucination_detection import detect_hallucinations
 
 load_dotenv()
 
