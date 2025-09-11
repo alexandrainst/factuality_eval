@@ -6,6 +6,7 @@ Usage:
 
 import json
 import logging
+import os
 
 import hydra
 from datasets import load_dataset
@@ -39,7 +40,13 @@ def main(config: DictConfig) -> None:
     # Detect hallucinations
     hallucinations = detect_hallucinations(dataset)
 
-    with open("predict_hallucinations.json", "w") as f:
+    # Save to Hydra's output directory
+    predictions_file = os.path.join(
+        hydra.core.hydra_config.HydraConfig.get().runtime.output_dir,
+        "predict_hallucinations.json",
+    )
+
+    with open(predictions_file, "w") as f:
         json.dump(hallucinations, f, indent=4)
 
 
