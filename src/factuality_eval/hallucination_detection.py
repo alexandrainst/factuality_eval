@@ -12,21 +12,21 @@ def detect_hallucinations(
     """Load tinylettuce model and detect hallucinations.
 
     Args:
-        dataset:
-            Hallucination dataset, generated with e.g. lettuce.
-        model:
-            Path to model.
+        dataset: Hallucination dataset, generated with e.g. lettuce.
+        model: Path to model.
 
+    Returns:
+        A dictionary with the predicted answers and ground truth hallucinated parts.
     """
     detector = HallucinationDetector(method="transformer", model_path=model)
 
     predict_answers = []
     all_hallucinated_parts = []
     for context, question, answer, hallucinated_parts in zip(
-        dataset["train"]["context"],
-        dataset["train"]["question"],
-        dataset["train"]["answer"],
-        dataset["train"]["hallucinated_parts"],
+        dataset["context"],
+        dataset["question"],
+        dataset["answer"],
+        dataset["hallucinated_parts"],
     ):
         # Use the detector to predict if the answer is hallucinated
         predict_answer = detector.predict(

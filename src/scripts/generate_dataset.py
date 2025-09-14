@@ -21,7 +21,7 @@ load_dotenv()
 
 
 @hydra.main(
-    config_path="../../config", config_name="dataset_generation", version_base=None
+    config_path="../../config", config_name="hallucination_detection", version_base=None
 )
 def main(config: DictConfig) -> None:
     """Main function.

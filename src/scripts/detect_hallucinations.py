@@ -19,7 +19,7 @@ load_dotenv()
 
 
 @hydra.main(
-    config_path="../../config", config_name="dataset_generation", version_base=None
+    config_path="../../config", config_name="hallucination_detection", version_base=None
 )
 def main(config: DictConfig) -> None:
     """Main function.
@@ -38,7 +38,7 @@ def main(config: DictConfig) -> None:
     dataset = load_dataset(f"{config.hub_organisation}/{target_dataset_name}")
 
     # Detect hallucinations
-    hallucinations = detect_hallucinations(dataset)
+    hallucinations = detect_hallucinations(dataset["train"])
 
     # Save to Hydra's output directory
     predictions_file = os.path.join(
@@ -46,8 +46,9 @@ def main(config: DictConfig) -> None:
         "predict_hallucinations.json",
     )
 
-    with open(predictions_file, "w") as f:
-        json.dump(hallucinations, f, indent=4)
+    if config.save_dataset_to_file:
+        with open(predictions_file, "w") as f:
+            json.dump(hallucinations, f, indent=4)
 
 
 if __name__ == "__main__":
