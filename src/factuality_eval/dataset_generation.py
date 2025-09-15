@@ -175,6 +175,7 @@ def generate_hallucinations_from_qa_data(
             question=question,
             answer=answer,
             hallucinated_answer=result["hallucinated_answer"],
+            hallucinated_parts=result["hallucinated_parts"],
             intensity=intensity,
         )
         records.append(record)
@@ -199,6 +200,7 @@ def generate_hallucinations_from_qa_data(
         data_dict["answer"].append(record["answer"])
         data_dict["intensity"].append(float("nan"))
         data_dict["hallucination"].append(False)
+        data_dict["hallucinated_parts"].append([])
 
         # Hallucinated example
         data_dict["context"].append(record["context"])
@@ -206,6 +208,8 @@ def generate_hallucinations_from_qa_data(
         data_dict["answer"].append(record["hallucinated_answer"])
         data_dict["intensity"].append(record["intensity"])
         data_dict["hallucination"].append(True)
+        data_dict["hallucinated_parts"].append(record["hallucinated_parts"])
+
     generated_dataset = Dataset.from_dict(mapping=data_dict)
 
     return generated_dataset
