@@ -23,3 +23,16 @@ private: true
 testing: false
 
 save_dataset_to_file: false
+
+training:
+  output_dir: models
+  batch_size: 1
+  epochs: 5
+  learning_rate: 1e-5
+  weight_decay: 0.01
+  language: da
+  push_to_hub: True
+
+models:
+  target_model_name: ettin-encoder-17m-multi-wiki-qa-da
+  pretrained_model_name: jhu-clsp/ettin-encoder-17m
