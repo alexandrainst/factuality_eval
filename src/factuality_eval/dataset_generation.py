@@ -168,6 +168,8 @@ def generate_hallucinations_from_qa_data(
             logger.error(f"Error during generation: {e}. Skipping...")
             continue
 
+        hallucinated_labels = get_hallucinated_labels(result)
+
         # Save the record
         record = dict(
             hash=hash_,
@@ -176,6 +178,7 @@ def generate_hallucinations_from_qa_data(
             answer=answer,
             hallucinated_answer=result["hallucinated_answer"],
             hallucinated_parts=result["hallucinated_parts"],
+            hallucinated_labels=hallucinated_labels,
             intensity=intensity,
         )
         records.append(record)
@@ -201,6 +204,7 @@ def generate_hallucinations_from_qa_data(
         data_dict["intensity"].append(float("nan"))
         data_dict["hallucination"].append(False)
         data_dict["hallucinated_parts"].append([])
+        data_dict["hallucinated_labels"].append([])
 
         # Hallucinated example
         data_dict["context"].append(record["context"])
@@ -209,6 +213,7 @@ def generate_hallucinations_from_qa_data(
         data_dict["intensity"].append(record["intensity"])
         data_dict["hallucination"].append(True)
         data_dict["hallucinated_parts"].append(record["hallucinated_parts"])
+        data_dict["hallucinated_labels"].append(record["hallucinated_labels"])
 
     generated_dataset = Dataset.from_dict(mapping=data_dict)
 
@@ -230,3 +235,23 @@ def generate_hash(context: list[str], question: str, answer: str) -> str:
         A unique hash string for the QA pair.
     """
     return hashlib.md5((context[0] + question + answer).encode("utf-8")).hexdigest()
+
+
+def get_hallucinated_labels(hallucinated_dict: dict) -> list[dict]:
+    """Get the hallucinated labels from the generation result.
+
+    Args:
+        hallucinated_dict:
+            The dictionary from the hallucination generator.
+
+    Returns:
+        A list of dictionaries with start, end, and label for each hallucinated part.
+    """
+    hallucinated_labels = []
+    for part in hallucinated_dict["hallucinated_parts"]:
+        start = hallucinated_dict["hallucinated_answer"].find(part)
+        if start != -1:
+            hallucinated_labels.append(
+                {"start": start, "end": start + len(part), "label": "hallucinated"}
+            )
+    return hallucinated_labels
