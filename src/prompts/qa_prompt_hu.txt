@@ -1,0 +1,6 @@
+Röviden válaszolj az alábbi kérdésre:
+${question}
+Vedd figyelembe, hogy a válaszod kizárólag az alábbi ${num_passages} szövegrészletre támaszkodjon:
+${context}
+Ha a szövegrészletek nem tartalmazzák a kérdés megválaszolásához szükséges információt, válaszolj így: "Nem tudok válaszolni a megadott szövegrészletek alapján."
+output:
