@@ -9,12 +9,10 @@ import os
 
 import hydra
 import torch
-from datasets import Dataset, load_dataset
+from datasets import load_dataset
 from dotenv import load_dotenv
-from lettucedetect import HallucinationDataset, HallucinationSample
+from lettucedetect import HallucinationDataset
 from lettucedetect.models.evaluator import evaluate_model, print_metrics
-
-# from lettucedetect.models.evaluator import DataLoader
 from lettucedetect.models.trainer import Trainer
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
@@ -24,35 +22,13 @@ from transformers import (
     DataCollatorForTokenClassification,
 )
 
+from factuality_eval.dataset_generation import (
+    generate_lettucedetect_hallucination_samples,
+)
 from factuality_eval.train import format_dataset_to_ragtruth
 
 load_dotenv()
-
-
-def generate_lettucedetect_hallucination_samples(
-    dataset_split: Dataset,
-) -> list[HallucinationSample]:
-    """Generate hallucination samples for the LettuceDetect model.
-
-    Args:
-        dataset_split: The dataset split to generate samples from.
-
-    Returns:
-        A list of hallucination samples.
-    """
-    samples = []
-    for item in dataset_split:
-        sample = HallucinationSample(
-            prompt=item["prompt"],
-            answer=item["answer"],
-            labels=item["labels"],
-            split=item["split"],
-            task_type=item["task_type"],
-            dataset=item["dataset"],
-            language=item["language"],
-        )
-        samples.append(sample)
-    return samples
+logger = logging.getLogger("train_hallucination_detector")
 
 
 @hydra.main(
@@ -65,8 +41,6 @@ def main(config: DictConfig) -> None:
         config:
             The Hydra config for your project.
     """
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-
     target_dataset_name = (
         f"{config.base_dataset.id.split('/')[-1].replace(':', '-')}-hallucinated"
     )
@@ -126,7 +100,7 @@ def main(config: DictConfig) -> None:
         )
         model.to(device)
 
-        print("\nEvaluating...")
+        logger.info("\nEvaluating...")
         metrics = evaluate_model(model, test_loader, device)
         print_metrics(metrics)
 
@@ -160,22 +134,6 @@ def main(config: DictConfig) -> None:
                 repo_id=f"{config.hub_organisation}/{config.models.target_model_name}",
                 private=config.private,
             )
-
-    # Detect hallucinations
-    # hallucinations = detect_hallucinations(
-    #     train_test_split["test"],
-    #     model=f"{config.hub_organisation}/{config.models.target_model_name}",
-    # )
-
-    # Save to Hydra's output directory
-    # predictions_file = os.path.join(
-    #     hydra.core.hydra_config.HydraConfig.get().runtime.output_dir,
-    #     "predict_hallucinations.json",
-    # )
-
-    # if config.save_dataset_to_file:
-    #     with open(predictions_file, "w") as f:
-    #         json.dump(hallucinations, f, indent=4)
 
 
 if __name__ == "__main__":

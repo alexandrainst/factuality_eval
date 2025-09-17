@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 from datasets import Dataset, load_dataset
-from lettucedetect import HallucinationGenerator
+from lettucedetect import HallucinationGenerator, HallucinationSample
 from tqdm.auto import tqdm
 
 logger = logging.getLogger(__name__)
@@ -261,3 +261,29 @@ def get_hallucinated_labels(hallucinated_dict: dict) -> list[dict]:
                 {"start": start, "end": start + len(part), "label": "hallucinated"}
             )
     return hallucinated_labels
+
+
+def generate_lettucedetect_hallucination_samples(
+    dataset_split: Dataset,
+) -> list[HallucinationSample]:
+    """Generate hallucination samples for the LettuceDetect model.
+
+    Args:
+        dataset_split: The dataset split to generate samples from.
+
+    Returns:
+        A list of hallucination samples.
+    """
+    samples = []
+    for item in dataset_split:
+        sample = HallucinationSample(
+            prompt=item["prompt"],
+            answer=item["answer"],
+            labels=item["labels"],
+            split=item["split"],
+            task_type=item["task_type"],
+            dataset=item["dataset"],
+            language=item["language"],
+        )
+        samples.append(sample)
+    return samples
