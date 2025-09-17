@@ -1,9 +1,8 @@
 """Utilities for loading and formatting prompts. Adapted from LettuceDetect."""
 
-import typing as t
-
 from __future__ import annotations
 
+import typing as t
 from pathlib import Path
 from string import Template
 
@@ -47,10 +46,10 @@ class PromptUtils:
         Args:
             filename:
                 Name of the prompt file.
-        
+
         Returns:
             Template object for the prompt.
-            
+
         Raises:
             FileNotFoundError:
                 If the prompt file doesn't exist.
@@ -71,12 +70,14 @@ class PromptUtils:
                 The question, or None for summarization tasks.
             lang:
                 The language code.
-                
+
         Returns:
             Formatted prompt.
         """
-        p_word = LANG_TO_PASSAGE[lang]
-        ctx_block = "\n".join(f"{p_word} {i + 1}: {p}" for i, p in enumerate(context))
+        passage_word = LANG_TO_PASSAGE[lang]
+        ctx_block = "\n".join(
+            f"{passage_word} {i + 1}: {p}" for i, p in enumerate(context)
+        )
 
         if question is None:
             tmpl = PromptUtils.load_prompt(f"summary_prompt_{lang.lower()}.txt")
@@ -91,7 +92,10 @@ class PromptUtils:
     def get_full_language_name(lang: Lang) -> str:
         """Get the full language name for a language code.
 
-        :param lang: Language code
-        :return: Full language name
+        Args:
+            lang: Language code.
+
+        Returns:
+            Full language name.
         """
         return LANG_TO_FULL_NAME.get(lang, "Unknown")
