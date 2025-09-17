@@ -35,10 +35,10 @@ def generate_lettucedetect_hallucination_samples(
     """Generate hallucination samples for the LettuceDetect model.
 
     Args:
-        dataset_split (Dataset): The dataset split to generate samples from.
+        dataset_split: The dataset split to generate samples from.
 
     Returns:
-        list[HallucinationSample]: A list of hallucination samples.
+        A list of hallucination samples.
     """
     samples = []
     for item in dataset_split:
@@ -131,7 +131,6 @@ def main(config: DictConfig) -> None:
         print_metrics(metrics)
 
     else:
-        # Create model
         model = AutoModelForTokenClassification.from_pretrained(
             config.models.pretrained_model_name,
             num_labels=2,
@@ -139,7 +138,6 @@ def main(config: DictConfig) -> None:
             use_safetensors=True,
         )
 
-        # Create trainer
         trainer = Trainer(
             model=model,
             tokenizer=tokenizer,
@@ -150,11 +148,9 @@ def main(config: DictConfig) -> None:
             save_path=f"{config.training.output_dir}/{config.models.target_model_name}",
         )
 
-        # Train model
         logging.info("Starting training...")
         trainer.train()
 
-        # Push to hub
         if config.training.push_to_hub:
             model.push_to_hub(
                 repo_id=f"{config.hub_organisation}/{config.models.target_model_name}",

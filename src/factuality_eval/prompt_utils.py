@@ -22,7 +22,6 @@ LANG_TO_PASSAGE = {
     "hu": "szövegrészlet",
 }
 
-# Full language names for each language code
 LANG_TO_FULL_NAME = {
     "da": "Danish",
     "en": "English",
@@ -45,9 +44,16 @@ class PromptUtils:
     def load_prompt(filename: str) -> Template:
         """Load a prompt template from the prompts directory.
 
-        :param filename: Name of the prompt file
-        :return: Template object for the prompt
-        :raises FileNotFoundError: If the prompt file doesn't exist
+        Args:
+            filename:
+                Name of the prompt file.
+        
+        Returns:
+            Template object for the prompt.
+            
+        Raises:
+            FileNotFoundError:
+                If the prompt file doesn't exist.
         """
         path = PROMPT_DIR / filename
         if not path.exists():
@@ -58,10 +64,16 @@ class PromptUtils:
     def format_context(context: list[str], question: str | None, lang: Lang) -> str:
         """Format context and question into a prompt.
 
-        :param context: List of passages
-        :param question: Question (None for summarization tasks)
-        :param lang: Language code
-        :return: Formatted prompt
+        Args:
+            context:
+                List of passages.
+            question:
+                The question, or None for summarization tasks.
+            lang:
+                The language code.
+                
+        Returns:
+            Formatted prompt.
         """
         p_word = LANG_TO_PASSAGE[lang]
         ctx_block = "\n".join(f"{p_word} {i + 1}: {p}" for i, p in enumerate(context))
