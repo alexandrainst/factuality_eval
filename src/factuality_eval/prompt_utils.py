@@ -1,12 +1,14 @@
 """Utilities for loading and formatting prompts. Adapted from LettuceDetect."""
 
+import typing as t
+
 from __future__ import annotations
 
 from pathlib import Path
 from string import Template
 
 # Type for supported languages
-Lang = str  # "en", "de", "fr", "es", "it", "pl", "cn"
+Lang = t.Literal["en", "de", "fr", "es", "it", "pl", "cn"]
 
 LANG_TO_PASSAGE = {
     "da": "afsnit",
