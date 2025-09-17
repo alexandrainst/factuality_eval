@@ -249,6 +249,12 @@ def get_hallucinated_labels(hallucinated_dict: dict) -> list[dict]:
     """
     hallucinated_labels = []
     for part in hallucinated_dict["hallucinated_parts"]:
+        if hallucinated_dict["hallucinated_answer"].count(part) > 1:
+            raise ValueError(
+                f"The part {part!r} appears multiple times in the hallucinated answer "
+                f"{hallucinated_dict['hallucinated_answer']!r}, so could not correctly "
+                "mark the spans."
+            )
         start = hallucinated_dict["hallucinated_answer"].find(part)
         if start != -1:
             hallucinated_labels.append(
