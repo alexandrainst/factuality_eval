@@ -88,7 +88,7 @@ def main(config: DictConfig) -> None:
     # Check if model already exists
     model_save_path = (
         f"{config.training.output_dir}/"
-        f"{config.models.hallu_detect_model}-{config.language}"
+        f"{config.models.hallu_detect_model}-{config.base_dataset.id}-{config.language}"
     )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if os.path.exists(model_save_path) and os.path.isdir(model_save_path):
@@ -118,7 +118,7 @@ def main(config: DictConfig) -> None:
             test_loader=test_loader,
             epochs=config.training.epochs,
             learning_rate=config.training.learning_rate,
-            save_path=f"{config.training.output_dir}/{config.models.hallu_detect_model}-{config.language}",
+            save_path=f"{config.training.output_dir}/{config.models.hallu_detect_model}-{config.base_dataset.id}-{config.language}",
         )
 
         logging.info("Starting training...")
@@ -126,11 +126,11 @@ def main(config: DictConfig) -> None:
 
         if config.training.push_to_hub:
             model.push_to_hub(
-                repo_id=f"{config.hub_organisation}/{config.models.hallu_detect_model}-{config.language}",
+                repo_id=f"{config.hub_organisation}/{config.models.hallu_detect_model}-{config.base_dataset.id}-{config.language}",
                 private=config.private,
             )
             tokenizer.push_to_hub(
-                repo_id=f"{config.hub_organisation}/{config.models.hallu_detect_model}-{config.language}",
+                repo_id=f"{config.hub_organisation}/{config.models.hallu_detect_model}-{config.base_dataset.id}-{config.language}",
                 private=config.private,
             )
 

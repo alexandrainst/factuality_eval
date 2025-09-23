@@ -40,7 +40,7 @@ def main(config: DictConfig) -> None:
 
     # Load from hub and split into train/test
     contexts, questions, answers = load_qa_data(
-        base_dataset_id=f"{config.base_dataset.id}:{config.language}",
+        base_dataset_id=f"{config.base_dataset.organisation}/{config.base_dataset.id}:{config.language}",
         split="train",  # Load train split
         context_key=config.base_dataset.context_key,
         question_key=config.base_dataset.question_key,
@@ -72,7 +72,7 @@ def main(config: DictConfig) -> None:
     )
     hugging_face_path = (
         f"{config.hub_organisation}/"
-        f"{config.models.hallu_detect_model}-{config.language}"
+        f"{config.models.hallu_detect_model}-{config.base_dataset.id}-{config.language}"
     )
 
     hallucinations = detect_hallucinations(generated_dataset, model=hugging_face_path)

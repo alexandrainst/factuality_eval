@@ -36,7 +36,7 @@ def main(config: DictConfig) -> None:
 
     # Generate the hallucination dataset
     contexts, questions, answers = load_qa_data(
-        base_dataset_id=f"{config.base_dataset.id}:{config.language}",
+        base_dataset_id=f"{config.base_dataset.organisation}/{config.base_dataset.id}:{config.language}",
         split=config.base_dataset.split,
         context_key=config.base_dataset.context_key,
         question_key=config.base_dataset.question_key,
