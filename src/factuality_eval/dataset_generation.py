@@ -286,7 +286,9 @@ def generate_answers_from_qa_data(
                 # Switches between thinking and non-thinking modes. Default is True.
                 enable_thinking=False,
             )
-            model_inputs = tokenizer([text], return_tensors="pt")  # .to(model.device)
+            model_inputs = tokenizer([text], return_tensors="pt").to(
+                loaded_model.device
+            )
             generated_ids = loaded_model.generate(
                 **model_inputs,
                 max_new_tokens=32768,

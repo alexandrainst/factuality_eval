@@ -70,9 +70,9 @@ def main(config: DictConfig) -> None:
             "data", "final", f"{target_dataset_name.split('/')[1]}.jsonl"
         ),
     )
-    model_save_path = f"{config.training.output_dir}/{config.models.target_model_name}"
+    hugging_face_path = f"{config.hub_organisation}/{config.models.target_model_name}"
 
-    hallucinations = detect_hallucinations(generated_dataset, model=model_save_path)
+    hallucinations = detect_hallucinations(generated_dataset, model=hugging_face_path)
 
     print(len(hallucinations))
 
