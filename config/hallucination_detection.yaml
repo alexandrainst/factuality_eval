@@ -36,3 +36,4 @@ training:
 models:
   target_model_name: ettin-encoder-17m-multi-wiki-qa-da
   pretrained_model_name: jhu-clsp/ettin-encoder-17m
+  model_to_evaluate: Qwen/Qwen3-0.6B

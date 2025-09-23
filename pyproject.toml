@@ -13,6 +13,7 @@ maintainers = [
 ]
 requires-python = ">=3.11,<4.0"
 dependencies = [
+    "accelerate>=1.10.1",
     "datasets>=4.0.0",
     "hydra-core>=1.3.2",
     "lettucedetect>=0.1.8",

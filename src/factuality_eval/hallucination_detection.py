@@ -18,15 +18,14 @@ def detect_hallucinations(
     Returns:
         A dictionary with the predicted answers and ground truth hallucinated parts.
     """
-    detector = HallucinationDetector(method="transformer", model_path=model)
+    detector = HallucinationDetector(
+        method="transformer", model_path=model, device_map="auto", torch_dtype="auto"
+    )
 
     predict_answers = []
     all_hallucinated_parts = []
-    for context, question, answer, hallucinated_parts in zip(
-        dataset["context"],
-        dataset["question"],
-        dataset["answer"],
-        dataset["hallucinated_parts"],
+    for context, question, answer in zip(
+        dataset["context"], dataset["question"], dataset["answer"]
     ):
         # Use the detector to predict if the answer is hallucinated
         predict_answer = detector.predict(
@@ -34,7 +33,10 @@ def detect_hallucinations(
         )
 
         predict_answers.append(predict_answer)
-        all_hallucinated_parts.append(hallucinated_parts)
+
+    if "hallucinated_parts" in dataset.column_names:
+        for hallucinated_part in dataset["hallucinated_parts"]:
+            all_hallucinated_parts.append(hallucinated_part)
 
     data_dict: dict[str, list] = defaultdict(list)
     data_dict["predict_answers"] = predict_answers

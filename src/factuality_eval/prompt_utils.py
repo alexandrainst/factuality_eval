@@ -7,7 +7,7 @@ from pathlib import Path
 from string import Template
 
 # Type for supported languages
-Lang = t.Literal["en", "de", "fr", "es", "it", "pl", "cn"]
+Lang = t.Literal["en", "de", "fr", "es", "it", "pl", "cn", "da"]
 
 LANG_TO_PASSAGE = {
     "da": "afsnit",
