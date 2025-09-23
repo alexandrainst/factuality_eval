@@ -41,9 +41,7 @@ def main(config: DictConfig) -> None:
         config:
             The Hydra config for your project.
     """
-    target_dataset_name = (
-        f"{config.base_dataset.id.split('/')[-1].replace(':', '-')}-hallucinated"
-    )
+    target_dataset_name = f"{config.base_dataset.id}-{config.language}-hallucinated"
 
     # Load from hub
     dataset = load_dataset(f"{config.hub_organisation}/{target_dataset_name}")
@@ -59,9 +57,7 @@ def main(config: DictConfig) -> None:
 
     # Create tokenizer and data collator
     tokenizer = AutoTokenizer.from_pretrained(
-        config.models.pretrained_model_name,
-        trust_remote_code=True,
-        use_safetensors=True,
+        config.models.pretrained_model, trust_remote_code=True, use_safetensors=True
     )
     data_collator = DataCollatorForTokenClassification(
         tokenizer=tokenizer, label_pad_token_id=-100
@@ -90,7 +86,10 @@ def main(config: DictConfig) -> None:
     )
 
     # Check if model already exists
-    model_save_path = f"{config.training.output_dir}/{config.models.target_model_name}"
+    model_save_path = (
+        f"{config.training.output_dir}/"
+        f"{config.models.hallu_detect_model}-{config.language}"
+    )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if os.path.exists(model_save_path) and os.path.isdir(model_save_path):
         # Load existing model
@@ -106,7 +105,7 @@ def main(config: DictConfig) -> None:
 
     else:
         model = AutoModelForTokenClassification.from_pretrained(
-            config.models.pretrained_model_name,
+            config.models.pretrained_model,
             num_labels=2,
             trust_remote_code=True,
             use_safetensors=True,
@@ -119,7 +118,7 @@ def main(config: DictConfig) -> None:
             test_loader=test_loader,
             epochs=config.training.epochs,
             learning_rate=config.training.learning_rate,
-            save_path=f"{config.training.output_dir}/{config.models.target_model_name}",
+            save_path=f"{config.training.output_dir}/{config.models.hallu_detect_model}-{config.language}",
         )
 
         logging.info("Starting training...")
@@ -127,11 +126,11 @@ def main(config: DictConfig) -> None:
 
         if config.training.push_to_hub:
             model.push_to_hub(
-                repo_id=f"{config.hub_organisation}/{config.models.target_model_name}",
+                repo_id=f"{config.hub_organisation}/{config.models.hallu_detect_model}-{config.language}",
                 private=config.private,
             )
             tokenizer.push_to_hub(
-                repo_id=f"{config.hub_organisation}/{config.models.target_model_name}",
+                repo_id=f"{config.hub_organisation}/{config.models.hallu_detect_model}-{config.language}",
                 private=config.private,
             )
 

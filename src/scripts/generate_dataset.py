@@ -32,13 +32,11 @@ def main(config: DictConfig) -> None:
     """
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    target_dataset_name = (
-        f"{config.base_dataset.id.split('/')[-1].replace(':', '-')}-hallucinated"
-    )
+    target_dataset_name = f"{config.base_dataset.id}-{config.language}-hallucinated"
 
     # Generate the hallucination dataset
     contexts, questions, answers = load_qa_data(
-        base_dataset_id=config.base_dataset.id,
+        base_dataset_id=f"{config.base_dataset.id}:{config.language}",
         split=config.base_dataset.split,
         context_key=config.base_dataset.context_key,
         question_key=config.base_dataset.question_key,
@@ -56,7 +54,7 @@ def main(config: DictConfig) -> None:
         questions=questions,
         answers=answers,
         intensities=intensities,
-        model=config.model,
+        model=config.hallu_gen_model,
         temperature=config.temperature,
         output_jsonl_path=Path("data", "final", f"{target_dataset_name}.jsonl"),
     )

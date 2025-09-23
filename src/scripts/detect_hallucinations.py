@@ -34,13 +34,13 @@ def main(config: DictConfig) -> None:
     """
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    base_dataset_id = config.base_dataset.id.split("/")[-1].replace(":", "-")
-    model_name = config.models.model_to_evaluate
+    base_dataset_id = f"{config.base_dataset.id}-{config.language}"
+    model_name = config.models.eval_model
     target_dataset_name = f"{base_dataset_id}-{model_name}"
 
     # Load from hub and split into train/test
     contexts, questions, answers = load_qa_data(
-        base_dataset_id=config.base_dataset.id,
+        base_dataset_id=f"{config.base_dataset.id}:{config.language}",
         split="train",  # Load train split
         context_key=config.base_dataset.context_key,
         question_key=config.base_dataset.question_key,
@@ -64,13 +64,16 @@ def main(config: DictConfig) -> None:
         contexts=contexts,
         questions=questions,
         answers=answers,
-        model=config.models.model_to_evaluate,
+        model=config.models.eval_model,
         temperature=config.temperature,
         output_jsonl_path=Path(
             "data", "final", f"{target_dataset_name.split('/')[1]}.jsonl"
         ),
     )
-    hugging_face_path = f"{config.hub_organisation}/{config.models.target_model_name}"
+    hugging_face_path = (
+        f"{config.hub_organisation}/"
+        f"{config.models.hallu_detect_model}-{config.language}"
+    )
 
     hallucinations = detect_hallucinations(generated_dataset, model=hugging_face_path)
 
