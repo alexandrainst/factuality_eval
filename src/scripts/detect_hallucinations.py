@@ -36,7 +36,7 @@ def main(config: DictConfig) -> None:
 
     base_dataset_id = f"{config.base_dataset.id}-{config.language}"
     model_name = config.models.eval_model
-    target_dataset_name = f"{base_dataset_id}-{model_name}"
+    target_dataset_name = f"{base_dataset_id}-{model_name.split('/')[1]}"
 
     # Load from hub and split into train/test
     contexts, questions, answers = load_qa_data(
@@ -66,9 +66,7 @@ def main(config: DictConfig) -> None:
         answers=answers,
         model=config.models.eval_model,
         temperature=config.temperature,
-        output_jsonl_path=Path(
-            "data", "final", f"{target_dataset_name.split('/')[1]}.jsonl"
-        ),
+        output_jsonl_path=Path("data", "final", f"{target_dataset_name}.jsonl"),
     )
     hugging_face_path = (
         f"{config.hub_organisation}/"
