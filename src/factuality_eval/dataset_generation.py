@@ -320,6 +320,8 @@ def generate_answers_from_qa_data(
         data_dict["context"].append(record["context"])
         data_dict["question"].append(record["question"])
         data_dict["answer"].append(record["answer"])
+        data_dict["generated_answer"].append(record["generated_answer"])
+
         if "temperature" in kwargs.keys():
             data_dict["temperature"].append(record["temperature"])
 
