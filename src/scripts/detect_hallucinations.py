@@ -41,7 +41,7 @@ def main(config: DictConfig) -> None:
     # Load from hub and split into train/test
     contexts, questions, answers = load_qa_data(
         base_dataset_id=f"{config.base_dataset.organisation}/{config.base_dataset.id}:{config.language}",
-        split="train",  # Load train split
+        split="train",
         context_key=config.base_dataset.context_key,
         question_key=config.base_dataset.question_key,
         answer_key=config.base_dataset.answer_key,

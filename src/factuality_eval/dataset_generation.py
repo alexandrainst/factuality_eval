@@ -228,9 +228,9 @@ def generate_answers_from_qa_data(
     questions: list[str],
     answers: list[str],
     model: str,
-    temperature: float,
     output_jsonl_path: Path | None,
     lang: Lang = "da",
+    **kwargs,
 ) -> Dataset:
     """Generate answers from a model for given QA data.
 
@@ -290,10 +290,7 @@ def generate_answers_from_qa_data(
                 loaded_model.device
             )
             generated_ids = loaded_model.generate(
-                **model_inputs,
-                max_new_tokens=32768,
-                temperature=temperature,
-                do_sample=True,
+                **model_inputs, max_new_tokens=32768, **kwargs
             )
             output_ids = generated_ids[0][len(model_inputs.input_ids[0]) :].tolist()
 
@@ -310,7 +307,7 @@ def generate_answers_from_qa_data(
             question=question,
             answer=answer,
             generated_answer=result["generated_answer"],
-            temperature=temperature,
+            **kwargs,
         )
         records.append(record)
         hashes.add(hash_)
@@ -323,7 +320,8 @@ def generate_answers_from_qa_data(
         data_dict["context"].append(record["context"])
         data_dict["question"].append(record["question"])
         data_dict["answer"].append(record["answer"])
-        data_dict["temperature"].append(record["temperature"])
+        if "temperature" in kwargs.keys():
+            data_dict["temperature"].append(record["temperature"])
 
     generated_dataset = Dataset.from_dict(mapping=data_dict)
 
