@@ -50,7 +50,7 @@ def generate_single_answer(
     prompt = PromptUtils.format_context(list(context), question, lang=lang)
     messages = [{"role": "user", "content": prompt}]
     text = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
+        messages, tokenize=False, add_generation_prompt=False, enable_thinking=False
     )
 
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
@@ -61,13 +61,19 @@ def generate_single_answer(
         generation_kwargs["temperature"] = temperature
 
     generated_ids = model.generate(**model_inputs, **generation_kwargs)
-
     output_ids = generated_ids[0].tolist()
-    output = tokenizer.decode(output_ids, skip_special_tokens=True).strip("\n")
-    if "\n\nassistant\n<think>\n\n</think>\n\n" in output:
-        output = output.replace("\n\nassistant\n<think>\n\n</think>\n\n", "")
 
-    return output
+    # parsing thinking content (from documentation of Qwen, must be done even if thinking is disabled)
+    try:
+        # rindex finding 151668 (</think>)
+        index = len(output_ids) - output_ids[::-1].index(151668)
+    except ValueError:
+        index = 0
+
+    tokenizer.decode(output_ids[:index], skip_special_tokens=True).strip("\n")
+    content = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
+
+    return content
 
 
 def generate_answers_from_qa_data(
@@ -77,7 +83,6 @@ def generate_answers_from_qa_data(
     questions: list[str],
     answers: list[str],
     output_jsonl_path: Path | None,
-    max_examples: int = -1,
     max_new_tokens: int = 32768,
     temperature: float | None = None,
     lang: Lang = "da",
@@ -96,8 +101,6 @@ def generate_answers_from_qa_data(
             Optional path used to cache generations to disk.
         lang:
             Language passed to the prompt formatter.
-        max_examples:
-            If given, only process this many examples from ``dataset``.
 
     Returns:
         A Dataset containing both original and generated QA pairs.
@@ -118,9 +121,6 @@ def generate_answers_from_qa_data(
     for context, question, _answer in zip(
         tqdm(contexts, desc="Generating answers"), questions, answers
     ):
-        if max_examples != -1 and len(records) > max_examples:
-            break
-
         hash_ = generate_hash(context=context, question=question, answer=_answer)
         if hash_ in hashes:
             continue
@@ -147,7 +147,7 @@ def generate_answers_from_qa_data(
                 f.write(json.dumps(record) + "\n")
 
     data_dict: dict[str, list] = defaultdict(list)
-    for record in records[:max_examples]:
+    for record in records:
         data_dict["context"].append(record["context"])
         data_dict["question"].append(record["question"])
         data_dict["answer"].append(record["answer"])

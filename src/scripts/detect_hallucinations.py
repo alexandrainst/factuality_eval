@@ -65,7 +65,6 @@ def main(config: DictConfig) -> None:
         lang=config.language,
         max_new_tokens=config.generation.max_new_tokens,
         output_jsonl_path=Path("data", "final", f"{target_dataset_name}.jsonl"),
-        max_examples=config.generation.max_examples,
     )
 
     hallucination_detector_hugging_face_path = (

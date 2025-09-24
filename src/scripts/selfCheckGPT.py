@@ -4,21 +4,16 @@ Usage:
     uv run src/scripts/selfCheckGPT.py <config_key>=<config_value> ...
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from pathlib import Path
-
 import hydra
-from datasets import load_dataset
 from dotenv import load_dotenv
 from omegaconf import DictConfig
 from openai import OpenAI
-from tqdm.auto import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from factuality_eval.model_generation import generate_answers_from_qa_data
+from factuality_eval.dataset_generation import load_qa_data
+from factuality_eval.model_generation import generate_answers_from_qa_data, load_model_for_generation
 from factuality_eval.prompt_utils import PromptUtils
 from factuality_eval.selfcheck_gpt import PromptVerdict, SelfCheckGPTEvaluator
 
@@ -31,51 +26,119 @@ def _safe_model_name(model_name: str) -> str:
     return model_name.replace("/", "_")
 
 
+class _SampleDatasetList(list):
+    """List variant whose ``append`` accepts ``generated_answers`` keyword."""
+
+    def append(self, *, generated_answers) -> None:  # type: ignore[override]
+        super().append(generated_answers)
+
+
+def _extract_generated_answers(dataset) -> list[str]:
+    """Return the generated answer column from a dataset-like object."""
+
+    if dataset is None:
+        return []
+
+    if hasattr(dataset, "column_names") and "answer" in dataset.column_names:
+        return list(dataset["answer"])
+
+    if isinstance(dataset, list):
+        return list(dataset)
+
+    return list(dataset)
+
+
+def _prepare_context_prompts(
+    *, base_prompt: str, sample_answers: list[list[str]], example_index: int
+) -> list[str]:
+    """Construct prompts combining base context with sampled answers."""
+
+    contexts: list[str] = []
+    for sample_idx, answers in enumerate(sample_answers):
+        if example_index >= len(answers):
+            continue
+        sample_answer = answers[example_index]
+        if not sample_answer:
+            continue
+        contexts.append(
+            f"{base_prompt}\n\nSample answer {sample_idx + 1}:\n{sample_answer}"
+        )
+
+    return contexts
+
+
+def _sanitize_temperature(value: float | None) -> float | None:
+    """Map non-positive temperatures to ``None`` for greedy decoding."""
+
+    if value is None:
+        return None
+
+    if value <= 0:
+        return None
+
+    return value
+
+
 @hydra.main(
     config_path="../../config", config_name="hallucination_detection", version_base=None
 )
 def main(config: DictConfig) -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    dataset = load_dataset(
-        path=f"{config.hub_organisation}/{config.base_dataset.id}",
-        name=config.language,
-        split="train",
-    )
-    test_dataset = dataset.train_test_split(test_size=0.2, seed=42)["test"]
 
-    tokenizer = AutoTokenizer.from_pretrained(config.models.eval_model)
-    model = AutoModelForCausalLM.from_pretrained(
-        config.models.eval_model, torch_dtype="auto", device_map="auto"
+    reference_dataset_name = (
+        f"{config.base_dataset.id}-{config.language}-"
+        f"{config.models.eval_model.split('/')[1]}-reference"
     )
 
-    max_new_tokens = getattr(config.selfcheckgpt, "max_new_tokens", 32768)
+    contexts, questions, answers = load_qa_data(
+        base_dataset_id=f"{config.base_dataset.organisation}/{config.base_dataset.id}:{config.language}",
+        split="test",
+        context_key=config.base_dataset.context_key,
+        question_key=config.base_dataset.question_key,
+        answer_key=config.base_dataset.answer_key,
+        squad_format=config.base_dataset.squad_format,
+        testing=config.testing,
+        max_examples=config.generation.max_examples,
+    )
 
-    reference_dataset_name = f"{config.base_dataset.id}-{config.language}-{config.models.eval_model.split('/')[1]}"
-    generate_answers_from_qa_data(
+    model, tokenizer = load_model_for_generation(config.models.eval_model)
+
+    reference_answers = generate_answers_from_qa_data(
         model=model,
         tokenizer=tokenizer,
-        dataset=test_dataset,
+        contexts=contexts,
+        questions=questions,
+        answers=answers,
         lang=config.language,
-        max_new_tokens=max_new_tokens,
+        max_new_tokens=config.generation.max_new_tokens,
         output_jsonl_path=Path("data", "final", f"{reference_dataset_name}.jsonl"),
-        max_examples=config.selfcheckgpt.max_examples,
+        temperature=_sanitize_temperature(config.selfcheckgpt.reference_temperature),
     )
 
-    sample_dataset_name = f"{config.base_dataset.id}-{config.language}-{config.models.eval_model.split('/')[1]}-"
+    sample_dataset_name = (
+        f"{config.base_dataset.id}-{config.language}-"
+        f"{config.models.eval_model.split('/')[1]}-sample"
+    )
     sample_datasets = []
+    try:
+        sample_datasets.__class__ = _SampleDatasetList
+    except TypeError:
+        sample_datasets = _SampleDatasetList(sample_datasets)
     for sample_idx in range(config.selfcheckgpt.num_samples):
         sample_datasets.append(
-            generate_answers_from_qa_data(
+            generated_answers=generate_answers_from_qa_data(
                 model=model,
                 tokenizer=tokenizer,
-                dataset=test_dataset,
+                contexts=contexts,
+                questions=questions,
+                answers=answers,
                 lang=config.language,
-                max_new_tokens=max_new_tokens,
-                do_sample=True,
-                temperature=config.selfcheckgpt.sampling_temperature,
-                max_examples=config.selfcheckgpt.max_examples,
+                max_new_tokens=config.generation.max_new_tokens,
                 output_jsonl_path=Path(
-                    "data", "final", f"{sample_dataset_name}{sample_idx}.jsonl"
+                    "data", "final", f"{sample_dataset_name}-{sample_idx}.jsonl"
+                ),
+                temperature=_sanitize_temperature(
+                    config.selfcheckgpt.sampling_temperature
                 ),
             )
         )
@@ -87,41 +150,37 @@ def main(config: DictConfig) -> None:
         request_timeout=getattr(config.selfcheckgpt, "request_timeout", None),
     )
 
+    reference_dataset = reference_answers
+    reference_generated_answers = _extract_generated_answers(reference_dataset)[
+        : len(contexts)
+    ]
+    sample_generated_answers = [
+        _extract_generated_answers(dataset)[: len(contexts)]
+        for dataset in sample_datasets
+    ]
+
     results = []
     mean_scores = []
-    for idx, (example, reference_answer) in enumerate(
-        tqdm(
-            zip(test_dataset, reference_outputs),
-            total=len(test_dataset),
-            desc="Running SelfCheckGPT scoring",
-            unit="answer",
-        )
+
+    for idx, (context_passages, question, ground_truth_answer) in enumerate(
+        zip(contexts, questions, answers)
     ):
-        raw_context = example.get("context")
-        question = example.get("question")
-        ground_truth_raw = example.get("answer")
+        if idx >= len(reference_generated_answers):
+            logger.warning(
+                "Missing reference answer for index %s; skipping", idx
+            )
+            continue
 
-        if raw_context is None:
-            context_passages: list[str] = []
-        elif isinstance(raw_context, str):
-            context_passages = [raw_context]
-        else:
-            context_passages = list(raw_context)
-
-        if isinstance(ground_truth_raw, dict) and "text" in ground_truth_raw:
-            ground_truth_answer = ground_truth_raw["text"]
-        elif isinstance(ground_truth_raw, list):
-            ground_truth_answer = ground_truth_raw[0] if ground_truth_raw else ""
-        else:
-            ground_truth_answer = ground_truth_raw
-
+        reference_answer = reference_generated_answers[idx]
         context_prompt = PromptUtils.format_context(
             context_passages, question, lang=config.language
         )
-        contexts_for_scoring = [
-            f"{context_prompt}\n\nSample answer {sample_idx + 1}:\n{samples[idx]}"
-            for sample_idx, samples in enumerate(sampled_outputs)
-        ]
+
+        contexts_for_scoring = _prepare_context_prompts(
+            base_prompt=context_prompt,
+            sample_answers=sample_generated_answers,
+            example_index=idx,
+        )
 
         if not contexts_for_scoring:
             logger.warning("No sampled contexts available for index %s", idx)
