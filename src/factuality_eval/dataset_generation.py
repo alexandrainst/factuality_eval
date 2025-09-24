@@ -12,7 +12,8 @@ from lettucedetect import HallucinationGenerator, HallucinationSample
 from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from factuality_eval.prompt_utils import Lang, PromptUtils
+from factuality_eval.model_generation import generate_single_answer, infer_model_device
+from factuality_eval.prompt_utils import Lang
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +267,7 @@ def generate_answers_from_qa_data(
     loaded_model = AutoModelForCausalLM.from_pretrained(
         model, torch_dtype="auto", device_map="auto"
     )
+    model_device = infer_model_device(loaded_model)
 
     # Extract the list of hashes for quick lookups
     hashes = {record["hash"] for record in records}
@@ -275,28 +277,21 @@ def generate_answers_from_qa_data(
         if hash_ in hashes:
             continue
 
-        # Generate generated answer from model
+        generation_params = dict(kwargs)
+        max_new_tokens = generation_params.pop("max_new_tokens", 32768)
+
         try:
-            prompt = PromptUtils.format_context(context, question, lang=lang)
-            messages = [{"role": "user", "content": prompt}]
-            text = tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=False,
-                # Switches between thinking and non-thinking modes. Default is True.
+            generated_answer = generate_single_answer(
+                tokenizer=tokenizer,
+                model=loaded_model,
+                context=context,
+                question=question,
+                lang=lang,
+                max_new_tokens=max_new_tokens,
+                device=model_device,
                 enable_thinking=False,
+                **generation_params,
             )
-            model_inputs = tokenizer([text], return_tensors="pt").to(
-                loaded_model.device
-            )
-            generated_ids = loaded_model.generate(
-                **model_inputs, max_new_tokens=32768, **kwargs
-            )
-            output_ids = generated_ids[0][len(model_inputs.input_ids[0]) :].tolist()
-
-            generated_answer = tokenizer.decode(output_ids, skip_special_tokens=True)
-
-            result = {"generated_answer": generated_answer}
         except Exception as e:
             logger.error(f"Error during generation: {e}. Skipping...")
             continue
@@ -306,7 +301,7 @@ def generate_answers_from_qa_data(
             context=context,
             question=question,
             answer=answer,
-            generated_answer=result["generated_answer"],
+            generated_answer=generated_answer,
             **kwargs,
         )
         records.append(record)

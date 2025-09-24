@@ -39,3 +39,16 @@ models:
   hallu_gen_model: gpt-4.1-mini
 
 language: da
+
+selfcheckgpt:
+  num_samples: 20
+  sampling_temperature: 1.0
+  reference_temperature: 0.0
+  reference_do_sample: false
+  prompt_model: gpt-4o-mini
+  max_new_tokens: 1024
+  output_dir: data/final/selfcheckgpt
+  max_retries: 3
+  request_timeout: null
+  context_char_limit: null
+  max_examples: null
