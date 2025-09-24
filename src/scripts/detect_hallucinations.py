@@ -65,7 +65,6 @@ def main(config: DictConfig) -> None:
         questions=questions,
         answers=answers,
         model=config.models.eval_model,
-        temperature=config.temperature,
         output_jsonl_path=Path("data", "final", f"{target_dataset_name}.jsonl"),
     )
     hugging_face_path = (
