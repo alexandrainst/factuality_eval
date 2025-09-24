@@ -9,165 +9,112 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Sequence
 
 import hydra
+from datasets import load_dataset
 from dotenv import load_dotenv
 from omegaconf import DictConfig
 from openai import OpenAI
-from sklearn.model_selection import train_test_split
 from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from factuality_eval.dataset_generation import load_qa_data
-from factuality_eval.model_generation import generate_single_answer, infer_model_device
-from factuality_eval.prompt_utils import Lang, PromptUtils
+from factuality_eval.model_generation import generate_answers_from_qa_data
+from factuality_eval.prompt_utils import PromptUtils
 from factuality_eval.selfcheck_gpt import PromptVerdict, SelfCheckGPTEvaluator
+
+load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 def _safe_model_name(model_name: str) -> str:
     return model_name.replace("/", "_")
 
 
-def _generate_model_outputs(
-    tokenizer: AutoTokenizer,
-    model: AutoModelForCausalLM,
-    contexts: Sequence[list[str]],
-    questions: Sequence[str],
-    *,
-    lang: Lang,
-    max_new_tokens: int,
-    do_sample: bool,
-    temperature: float,
-    description: str,
-) -> list[str]:
-    pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
-    if pad_token_id is None:
-        pad_token_id = 0
-    eos_token_id = tokenizer.eos_token_id
-    generation_kwargs = {"max_new_tokens": max_new_tokens, "pad_token_id": pad_token_id}
-    if eos_token_id is not None:
-        generation_kwargs["eos_token_id"] = eos_token_id
-    if do_sample:
-        generation_kwargs.update({"do_sample": True, "temperature": temperature})
-    else:
-        generation_kwargs["do_sample"] = False
-        if temperature is not None:
-            generation_kwargs["temperature"] = temperature
-
-    outputs: list[str] = []
-    device = infer_model_device(model)
-
-    for context, question in tqdm(
-        zip(contexts, questions), total=len(questions), desc=description, unit="sample"
-    ):
-        answer_kwargs = dict(generation_kwargs)
-        answer_kwargs.pop("max_new_tokens", None)
-        generated_answer = generate_single_answer(
-            tokenizer=tokenizer,
-            model=model,
-            context=context,
-            question=question,
-            lang=lang,
-            max_new_tokens=max_new_tokens,
-            device=device,
-            enable_thinking=False,
-            **answer_kwargs,
-        )
-        outputs.append(generated_answer)
-
-    return outputs
-
-
 @hydra.main(
     config_path="../../config", config_name="hallucination_detection", version_base=None
 )
 def main(config: DictConfig) -> None:
-    load_dotenv()
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    logger = logging.getLogger(__name__)
-
-    base_dataset_id = (
-        f"{config.base_dataset.organisation}/{config.base_dataset.id}:{config.language}"
+    dataset = load_dataset(
+        path=f"{config.hub_organisation}/{config.base_dataset.id}",
+        name=config.language,
+        split="train",
     )
-
-    contexts, questions, answers = load_qa_data(
-        base_dataset_id=base_dataset_id,
-        split=config.base_dataset.split,
-        context_key=config.base_dataset.context_key,
-        question_key=config.base_dataset.question_key,
-        answer_key=config.base_dataset.answer_key,
-        squad_format=config.base_dataset.squad_format,
-        testing=config.testing,
-    )
-
-    contexts = list(contexts)
-    questions = list(questions)
-    answers = list(answers)
-
-    _, contexts, _, questions, _, answers = train_test_split(
-        contexts, questions, answers, test_size=0.2, random_state=42, shuffle=False
-    )
-
-    max_examples = getattr(config.selfcheckgpt, "max_examples", None)
-    if max_examples is not None:
-        contexts = contexts[:max_examples]
-        questions = questions[:max_examples]
-        answers = answers[:max_examples]
+    test_dataset = dataset.train_test_split(test_size=0.2, seed=42)["test"]
 
     tokenizer = AutoTokenizer.from_pretrained(config.models.eval_model)
     model = AutoModelForCausalLM.from_pretrained(
         config.models.eval_model, torch_dtype="auto", device_map="auto"
     )
 
-    max_new_tokens = getattr(config.selfcheckgpt, "max_new_tokens", 1024)
+    max_new_tokens = getattr(config.selfcheckgpt, "max_new_tokens", 32768)
 
-    reference_outputs = _generate_model_outputs(
-        tokenizer,
-        model,
-        contexts,
-        questions,
+    reference_dataset_name = f"{config.base_dataset.id}-{config.language}-{config.models.eval_model.split('/')[1]}"
+    generate_answers_from_qa_data(
+        model=model,
+        tokenizer=tokenizer,
+        dataset=test_dataset,
         lang=config.language,
         max_new_tokens=max_new_tokens,
-        do_sample=getattr(config.selfcheckgpt, "reference_do_sample", False),
-        temperature=getattr(config.selfcheckgpt, "reference_temperature", 0.0),
-        description="Generating reference answers",
+        output_jsonl_path=Path("data", "final", f"{reference_dataset_name}.jsonl"),
+        max_examples=config.selfcheckgpt.max_examples,
     )
 
-    sampled_outputs: list[list[str]] = []
-    num_samples = getattr(config.selfcheckgpt, "num_samples", 20)
-    for sample_idx in range(num_samples):
-        sample_outputs = _generate_model_outputs(
-            tokenizer,
-            model,
-            contexts,
-            questions,
-            lang=config.language,
-            max_new_tokens=max_new_tokens,
-            do_sample=True,
-            temperature=getattr(config.selfcheckgpt, "sampling_temperature", 1.0),
-            description=f"Sampling answers {sample_idx + 1}/{num_samples}",
+    sample_dataset_name = f"{config.base_dataset.id}-{config.language}-{config.models.eval_model.split('/')[1]}-"
+    sample_datasets = []
+    for sample_idx in range(config.selfcheckgpt.num_samples):
+        sample_datasets.append(
+            generate_answers_from_qa_data(
+                model=model,
+                tokenizer=tokenizer,
+                dataset=test_dataset,
+                lang=config.language,
+                max_new_tokens=max_new_tokens,
+                do_sample=True,
+                temperature=config.selfcheckgpt.sampling_temperature,
+                max_examples=config.selfcheckgpt.max_examples,
+                output_jsonl_path=Path(
+                    "data", "final", f"{sample_dataset_name}{sample_idx}.jsonl"
+                ),
+            )
         )
-        sampled_outputs.append(sample_outputs)
 
     evaluator = SelfCheckGPTEvaluator(
         client=OpenAI(),
         model=getattr(config.selfcheckgpt, "prompt_model", "gpt-4o-mini"),
         max_retries=getattr(config.selfcheckgpt, "max_retries", 3),
         request_timeout=getattr(config.selfcheckgpt, "request_timeout", None),
-        context_char_limit=getattr(config.selfcheckgpt, "context_char_limit", None),
     )
 
     results = []
     mean_scores = []
-    for idx, (context_passages, question, reference_answer, ground_truth) in enumerate(
+    for idx, (example, reference_answer) in enumerate(
         tqdm(
-            zip(contexts, questions, reference_outputs, answers),
-            total=len(questions),
+            zip(test_dataset, reference_outputs),
+            total=len(test_dataset),
             desc="Running SelfCheckGPT scoring",
             unit="answer",
         )
     ):
+        raw_context = example.get("context")
+        question = example.get("question")
+        ground_truth_raw = example.get("answer")
+
+        if raw_context is None:
+            context_passages: list[str] = []
+        elif isinstance(raw_context, str):
+            context_passages = [raw_context]
+        else:
+            context_passages = list(raw_context)
+
+        if isinstance(ground_truth_raw, dict) and "text" in ground_truth_raw:
+            ground_truth_answer = ground_truth_raw["text"]
+        elif isinstance(ground_truth_raw, list):
+            ground_truth_answer = ground_truth_raw[0] if ground_truth_raw else ""
+        else:
+            ground_truth_answer = ground_truth_raw
+
         context_prompt = PromptUtils.format_context(
             context_passages, question, lang=config.language
         )
@@ -194,7 +141,7 @@ def main(config: DictConfig) -> None:
             {
                 "index": idx,
                 "question": question,
-                "ground_truth_answer": ground_truth,
+                "ground_truth_answer": ground_truth_answer,
                 "reference_answer": reference_answer,
                 "contexts": contexts_for_scoring,
                 "verdicts": [
