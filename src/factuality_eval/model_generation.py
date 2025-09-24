@@ -30,7 +30,6 @@ def generate_single_answer(
     question: str | None,
     lang: Lang,
     max_new_tokens: int = 32768,
-    enable_thinking: bool = False,
     temperature: float | None = None,
 ) -> str:
     """Generate a single answer from model for the given context and question.
@@ -42,7 +41,6 @@ def generate_single_answer(
         question: The question to condition the generation on.
         lang: Language passed to the prompt formatter.
         max_new_tokens: The maximum number of new tokens to generate.
-        enable_thinking: Whether to enable the "let me think" prompt.
         temperature: The temperature to use for generation. If None, the
             default temperature of the model is used.
 
@@ -52,10 +50,7 @@ def generate_single_answer(
     prompt = PromptUtils.format_context(list(context), question, lang=lang)
     messages = [{"role": "user", "content": prompt}]
     text = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=False,
-        enable_thinking=enable_thinking,
+        messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
     )
 
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
@@ -68,8 +63,11 @@ def generate_single_answer(
     generated_ids = model.generate(**model_inputs, **generation_kwargs)
 
     output_ids = generated_ids[0].tolist()
+    output = tokenizer.decode(output_ids, skip_special_tokens=True).strip("\n")
+    if "\n\nassistant\n<think>\n\n</think>\n\n" in output:
+        output = output.replace("\n\nassistant\n<think>\n\n</think>\n\n", "")
 
-    return tokenizer.decode(output_ids, skip_special_tokens=True).strip("\n")
+    return output
 
 
 def generate_answers_from_qa_data(
@@ -135,7 +133,6 @@ def generate_answers_from_qa_data(
                 question=question,
                 lang=lang,
                 max_new_tokens=max_new_tokens,
-                enable_thinking=False,
                 temperature=temperature,
             )
         except Exception as e:

@@ -31,10 +31,13 @@ def detect_hallucinations(
         dataset["context"], dataset["question"], dataset["answer"]
     ):
         # Use the detector to predict if the answer is hallucinated
-        predict_answer = detector.predict(
-            context=context, question=question, answer=answer
-        )
-
+        try:
+            predict_answer = detector.predict(
+                context=context, question=question, answer=answer
+            )
+        except Exception as e:
+            logger.error(f"Error during hallucination detection: {e}. Skipping...")
+            continue
         predict_answers.append(predict_answer)
 
     if "hallucinated_parts" in dataset.column_names:
@@ -58,6 +61,8 @@ def evaluate_predicted_answers(hallucinations: dict) -> None:
     Returns:
         None
     """
+    logger.info("Evaluating model answers for hallucinations...")
+
     no_hallucination_in_answers = []
     no_tokens_in_answers = []
 
@@ -75,31 +80,20 @@ def evaluate_predicted_answers(hallucinations: dict) -> None:
         no_hallucination_in_answers.append(no_hallucination_in_answer)
         no_tokens_in_answers.append(no_tokens_in_answer)
 
-    logger.info("Evaluating model answers for hallucinations...")
-
     hallucination_rate = hallucinated_tokens / total_tokens
+
+    answers_with_hallucinations = sum([1 for x in no_hallucination_in_answers if x > 0])
+
+    rate_with_hallucinations = answers_with_hallucinations / len(
+        no_hallucination_in_answers
+    )
+    logger.info("Results ________________________________________")
     logger.info(
         f"Hallucination rate (hallucinated_tokens/total_tokens) : "
         f"{hallucination_rate:.2f}"
-    )
-
-    avg_hallucinations = sum(no_hallucination_in_answers) / len(
-        no_hallucination_in_answers
-    )
-    logger.info(f"Average hallucinations per answer: {avg_hallucinations:.2f}")
-
-    answers_with_hallucinations = sum([1 for x in no_hallucination_in_answers if x > 0])
-    rate_with_hallucinations = answers_with_hallucinations / len(
-        no_hallucination_in_answers
     )
     logger.info(
         f"Rate of answers with at least one hallucination: "
         f"{rate_with_hallucinations:.2f}"
     )
-
-    avg_tokens = sum(no_tokens_in_answers) / len(no_tokens_in_answers)
-    logger.info(f"Average tokens per answer: {avg_tokens:.2f}")
-    logger.info(f"Total answers: {len(no_hallucination_in_answers)}")
-    logger.info(f"Total hallucinated tokens: {hallucinated_tokens}")
-    logger.info(f"Total tokens: {total_tokens}")
     return
