@@ -1,9 +1,12 @@
 """Detection of hallucinations in a dataset."""
 
+import logging
 from collections import defaultdict
 
 from datasets import Dataset
 from lettucedetect.models.inference import HallucinationDetector
+
+logger = logging.getLogger(__name__)
 
 
 def detect_hallucinations(
@@ -43,3 +46,51 @@ def detect_hallucinations(
     data_dict["ground_truth"] = all_hallucinated_parts
 
     return data_dict
+
+
+def evaluate_predicted_answers(hallucinations: dict) -> None:
+    no_hallucination_in_answers = []
+    no_tokens_in_answers = []
+
+    hallucinated_tokens = 0
+    total_tokens = 0
+    for predict_answer in hallucinations["predict_answers"]:
+        no_hallucination_in_answer = 0
+        no_tokens_in_answer = 0
+        for tokens in predict_answer:
+            hallucinated_tokens += tokens["pred"]
+            total_tokens += 1
+
+            no_hallucination_in_answer += tokens["pred"]
+            no_tokens_in_answer += 1
+        no_hallucination_in_answers.append(no_hallucination_in_answer)
+        no_tokens_in_answers.append(no_tokens_in_answer)
+
+    logger.info("Evaluating model answers for hallucinations...")
+
+    hallucination_rate = hallucinated_tokens / total_tokens
+    logger.info(
+        f"Hallucination rate (hallucinated_tokens/total_tokens) : "
+        f"{hallucination_rate:.2f}"
+    )
+
+    avg_hallucinations = sum(no_hallucination_in_answers) / len(
+        no_hallucination_in_answers
+    )
+    logger.info(f"Average hallucinations per answer: {avg_hallucinations:.2f}")
+
+    answers_with_hallucinations = sum([1 for x in no_hallucination_in_answers if x > 0])
+    rate_with_hallucinations = answers_with_hallucinations / len(
+        no_hallucination_in_answers
+    )
+    logger.info(
+        f"Rate of answers with at least one hallucination: "
+        f"{rate_with_hallucinations:.2f}"
+    )
+
+    avg_tokens = sum(no_tokens_in_answers) / len(no_tokens_in_answers)
+    logger.info(f"Average tokens per answer: {avg_tokens:.2f}")
+    logger.info(f"Total answers: {len(no_hallucination_in_answers)}")
+    logger.info(f"Total hallucinated tokens: {hallucinated_tokens}")
+    logger.info(f"Total tokens: {total_tokens}")
+    return

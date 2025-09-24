@@ -9,11 +9,8 @@ from pathlib import Path
 import numpy as np
 from datasets import Dataset, load_dataset
 from lettucedetect import HallucinationGenerator, HallucinationSample
+from sklearn.model_selection import train_test_split
 from tqdm.auto import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-from factuality_eval.model_generation import generate_single_answer, infer_model_device
-from factuality_eval.prompt_utils import Lang
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +48,9 @@ def load_qa_data(
     logger.info(f"Loading base dataset {base_dataset_id!r}...")
     dataset_id = base_dataset_id.split(":")[0]
     subset = base_dataset_id.split(":")[1] if ":" in base_dataset_id else None
-    ds = load_dataset(path=dataset_id, name=subset, split=split)
+    ds = load_dataset(
+        path=dataset_id, name=subset, split="train"
+    )  # only train exists for the wiki-qa dataset
 
     logger.info("Preparing dataset...")
     contexts: list[list[str]] = [[ctx] for ctx in ds[context_key]]
@@ -68,6 +67,13 @@ def load_qa_data(
         contexts = contexts[:10]
         questions = questions[:10]
         answers = answers[:10]
+
+    if split == "test":
+        logger.info("Using test split of the dataset...")
+        contexts, _, questions, _, answers, _ = train_test_split(
+            contexts, questions, answers, test_size=0.2, random_state=42
+        )
+        return contexts, questions, answers
 
     return contexts, questions, answers
 
@@ -218,107 +224,6 @@ def generate_hallucinations_from_qa_data(
         data_dict["hallucination"].append(True)
         data_dict["hallucinated_parts"].append(record["hallucinated_parts"])
         data_dict["hallucinated_labels"].append(record["hallucinated_labels"])
-
-    generated_dataset = Dataset.from_dict(mapping=data_dict)
-
-    return generated_dataset
-
-
-def generate_answers_from_qa_data(
-    contexts: list[list[str]],
-    questions: list[str],
-    answers: list[str],
-    model: str,
-    output_jsonl_path: Path | None,
-    lang: Lang = "da",
-    **kwargs,
-) -> Dataset:
-    """Generate answers from a model for given QA data.
-
-    Args:
-        contexts:
-            A list of contexts, where each context is a list of strings.
-        questions:
-            A list of questions corresponding to the contexts.
-        answers:
-            A list of answers corresponding to the questions.
-        model:
-            The model name to use for answer generation.
-        temperature:
-            The temperature to use for the model during generation.
-        output_jsonl_path:
-            The path to save the generated dataset in JSONL format, or None to skip
-            saving.
-
-    Returns:
-        A Dataset containing both original and generated QA pairs.
-    """
-    logger.info("Generating answers from model to be evaluated...")
-
-    records: list[dict] = list()
-
-    # Load the existing dataset if it exists
-    if output_jsonl_path is not None and output_jsonl_path.exists():
-        logger.info(f"Loading existing dataset from {output_jsonl_path}...")
-        with output_jsonl_path.open() as f:
-            records = [json.loads(line.strip()) for line in f if line.strip()]
-
-    tokenizer = AutoTokenizer.from_pretrained(model)
-    loaded_model = AutoModelForCausalLM.from_pretrained(
-        model, torch_dtype="auto", device_map="auto"
-    )
-    model_device = infer_model_device(loaded_model)
-
-    # Extract the list of hashes for quick lookups
-    hashes = {record["hash"] for record in records}
-
-    for context, question, answer in zip(tqdm(contexts), questions, answers):
-        hash_ = generate_hash(context=context, question=question, answer=answer)
-        if hash_ in hashes:
-            continue
-
-        generation_params = dict(kwargs)
-        max_new_tokens = generation_params.pop("max_new_tokens", 32768)
-
-        try:
-            generated_answer = generate_single_answer(
-                tokenizer=tokenizer,
-                model=loaded_model,
-                context=context,
-                question=question,
-                lang=lang,
-                max_new_tokens=max_new_tokens,
-                device=model_device,
-                enable_thinking=False,
-                **generation_params,
-            )
-        except Exception as e:
-            logger.error(f"Error during generation: {e}. Skipping...")
-            continue
-
-        record = dict(
-            hash=hash_,
-            context=context,
-            question=question,
-            answer=answer,
-            generated_answer=generated_answer,
-            **kwargs,
-        )
-        records.append(record)
-        hashes.add(hash_)
-        if output_jsonl_path is not None:
-            with output_jsonl_path.open("a") as f:
-                f.write(json.dumps(record) + "\n")
-
-    data_dict: dict[str, list] = defaultdict(list)
-    for record in records:
-        data_dict["context"].append(record["context"])
-        data_dict["question"].append(record["question"])
-        data_dict["answer"].append(record["answer"])
-        data_dict["generated_answer"].append(record["generated_answer"])
-
-        if "temperature" in kwargs.keys():
-            data_dict["temperature"].append(record["temperature"])
 
     generated_dataset = Dataset.from_dict(mapping=data_dict)
 
