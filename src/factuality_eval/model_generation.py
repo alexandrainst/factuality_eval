@@ -69,7 +69,7 @@ def generate_single_answer(
 
     output_ids = generated_ids[0].tolist()
 
-    return tokenizer.decode(output_ids, skip_special_tokens=False)
+    return tokenizer.decode(output_ids, skip_special_tokens=True).strip("\n")
 
 
 def generate_answers_from_qa_data(
