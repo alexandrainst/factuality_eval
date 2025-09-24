@@ -8,10 +8,10 @@ import logging
 from pathlib import Path
 
 import hydra
-from datasets import load_dataset
 from dotenv import load_dotenv
 from omegaconf import DictConfig
 
+from factuality_eval.dataset_generation import load_qa_data
 from factuality_eval.hallucination_detection import (
     detect_hallucinations,
     evaluate_predicted_answers,
@@ -38,32 +38,45 @@ def main(config: DictConfig) -> None:
     """
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    target_dataset_name = f"{config.base_dataset.id}-{config.language}-{config.models.eval_model.split('/')[1]}"
-
-    dataset = load_dataset(
-        path=f"{config.hub_organisation}/{config.base_dataset.id}",
-        name=config.language,
-        split="train",
+    target_dataset_name = (
+        f"{config.base_dataset.id}-{config.language}-"
+        f"{config.models.eval_model.split('/')[1]}"
     )
-    test_dataset = dataset.train_test_split(test_size=0.2, seed=42)["test"]
+
+    contexts, questions, answers = load_qa_data(
+        base_dataset_id=f"{config.base_dataset.organisation}/{config.base_dataset.id}:{config.language}",
+        split="test",
+        context_key=config.base_dataset.context_key,
+        question_key=config.base_dataset.question_key,
+        answer_key=config.base_dataset.answer_key,
+        squad_format=config.base_dataset.squad_format,
+        testing=config.testing,
+        max_examples=config.generation.max_examples,
+    )
 
     model, tokenizer = load_model_for_generation(config.models.eval_model)
 
-    generated_dataset = generate_answers_from_qa_data(
+    generated_answers = generate_answers_from_qa_data(
         model=model,
         tokenizer=tokenizer,
-        dataset=test_dataset,
+        contexts=contexts,
+        questions=questions,
+        answers=answers,
+        lang=config.language,
+        max_new_tokens=config.generation.max_new_tokens,
         output_jsonl_path=Path("data", "final", f"{target_dataset_name}.jsonl"),
+        max_examples=config.generation.max_examples,
     )
 
-    hallu_detector_hugging_face_path = (
+    hallucination_detector_hugging_face_path = (
         f"{config.hub_organisation}/"
         f"{config.models.hallu_detect_model}-{config.base_dataset.id}-{config.language}"
     )
 
     hallucinations = detect_hallucinations(
-        generated_dataset, model=hallu_detector_hugging_face_path
+        generated_answers, model=hallucination_detector_hugging_face_path
     )
+
     evaluate_predicted_answers(hallucinations)
     return
 

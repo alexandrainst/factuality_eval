@@ -28,7 +28,7 @@ def detect_hallucinations(
     predict_answers = []
     all_hallucinated_parts = []
     for context, question, answer in zip(
-        dataset["context"], dataset["question"], dataset["generated_answer"]
+        dataset["context"], dataset["question"], dataset["answer"]
     ):
         # Use the detector to predict if the answer is hallucinated
         predict_answer = detector.predict(
@@ -49,6 +49,15 @@ def detect_hallucinations(
 
 
 def evaluate_predicted_answers(hallucinations: dict) -> None:
+    """Evaluate the predicted answers for hallucinations.
+
+    Args:
+        hallucinations:
+            A dictionary with the predicted answers and ground truth hallucinated parts.
+
+    Returns:
+        None
+    """
     no_hallucination_in_answers = []
     no_tokens_in_answers = []
 

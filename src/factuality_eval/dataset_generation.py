@@ -9,7 +9,6 @@ from pathlib import Path
 import numpy as np
 from datasets import Dataset, load_dataset
 from lettucedetect import HallucinationGenerator, HallucinationSample
-from sklearn.model_selection import train_test_split
 from tqdm.auto import tqdm
 
 logger = logging.getLogger(__name__)
@@ -23,6 +22,7 @@ def load_qa_data(
     answer_key: str,
     squad_format: bool,
     testing: bool,
+    max_examples: int = -1,
 ) -> tuple[list[list[str]], list[str], list[str]]:
     """Load the base dataset.
 
@@ -51,6 +51,7 @@ def load_qa_data(
     ds = load_dataset(
         path=dataset_id, name=subset, split="train"
     )  # only train exists for the wiki-qa dataset
+    ds = ds.train_test_split(test_size=0.2, seed=42)[split]
 
     logger.info("Preparing dataset...")
     contexts: list[list[str]] = [[ctx] for ctx in ds[context_key]]
@@ -67,13 +68,11 @@ def load_qa_data(
         contexts = contexts[:10]
         questions = questions[:10]
         answers = answers[:10]
-
-    if split == "test":
-        logger.info("Using test split of the dataset...")
-        contexts, _, questions, _, answers, _ = train_test_split(
-            contexts, questions, answers, test_size=0.2, random_state=42
-        )
-        return contexts, questions, answers
+    elif max_examples != -1:
+        logger.info(f"Truncating dataset to {max_examples} examples...")
+        contexts = contexts[:max_examples]
+        questions = questions[:max_examples]
+        answers = answers[:max_examples]
 
     return contexts, questions, answers
 
@@ -123,8 +122,8 @@ def generate_hallucinations_from_qa_data(
     answers: list[str],
     intensities: list[float],
     model: str,
-    temperature: float,
     output_jsonl_path: Path | None,
+    temperature: float | None = None,
 ) -> Dataset:
     """Generate hallucinations from given QA data.
 
