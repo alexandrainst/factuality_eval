@@ -40,6 +40,18 @@ class SelfCheckGPTEvaluator:
         max_retries: int = 3,
         request_timeout: float | None = None,
     ) -> None:
+        """Initialize the evaluator.
+
+        Args:
+            client:
+                An initialized OpenAI client.
+            model:
+                The model name to use for evaluation.
+            max_retries:
+                Maximum number of retries for failed API calls.
+            request_timeout:
+                Optional timeout in seconds for each API call.
+        """
         self._client = client
         self._model = model
         self._max_retries = max(1, max_retries)

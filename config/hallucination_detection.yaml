@@ -32,7 +32,7 @@ training:
   push_to_hub: True
 
 models:
-  hallu_detect_model: ettin-encoder-17m
+  hallu_detect_model: mmBERT-small
   pretrained_model: jhu-clsp/ettin-encoder-17m
   eval_model: Qwen/Qwen3-0.6B
   hallu_gen_model: gpt-4.1-mini
@@ -51,5 +51,5 @@ selfcheckgpt:
   context_char_limit: null
 
 generation:
-  max_examples: 10
+  max_examples: 1000
   max_new_tokens: 32768

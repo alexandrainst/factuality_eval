@@ -2,11 +2,11 @@
 
 from datasets import Dataset
 
-from factuality_eval.prompt_utils import PromptUtils
+from factuality_eval.prompt_utils import Lang, PromptUtils
 
 
 def format_dataset_to_ragtruth(
-    dataset: Dataset, language: str = "da", split: str = "train"
+    dataset: Dataset, language: Lang = "da", split: str = "train"
 ) -> Dataset:
     """Format the dataset to ragtruth format.
 

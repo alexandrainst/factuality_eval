@@ -63,7 +63,8 @@ def generate_single_answer(
     generated_ids = model.generate(**model_inputs, **generation_kwargs)
     output_ids = generated_ids[0].tolist()
 
-    # parsing thinking content (from documentation of Qwen, must be done even if thinking is disabled)
+    # parsing thinking content (from documentation of Qwen,
+    # must be done even if thinking is disabled)
     try:
         # rindex finding 151668 (</think>)
         index = len(output_ids) - output_ids[::-1].index(151668)
