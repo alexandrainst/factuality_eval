@@ -101,7 +101,7 @@ class SelfCheckGPTEvaluator:
                     model=self._model,
                     input=prompt,
                     temperature=0.0,
-                    max_output_tokens=8,
+                    max_output_tokens=16,
                     **request_options,
                 )
                 return response.output_text.strip()
