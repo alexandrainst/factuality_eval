@@ -7,13 +7,14 @@ Usage:
 import json
 import logging
 from pathlib import Path
+
 import hydra
 from dotenv import load_dotenv
 from omegaconf import DictConfig
 from openai import OpenAI
 
 from factuality_eval.dataset_generation import load_qa_data
-from factuality_eval.model_generation import generate_answers_from_qa_data, load_model_for_generation
+from factuality_eval.model_generation import generate_answers_from_qa_data
 from factuality_eval.prompt_utils import PromptUtils
 from factuality_eval.selfcheck_gpt import PromptVerdict, SelfCheckGPTEvaluator
 
@@ -35,7 +36,6 @@ class _SampleDatasetList(list):
 
 def _extract_generated_answers(dataset) -> list[str]:
     """Return the generated answer column from a dataset-like object."""
-
     if dataset is None:
         return []
 
@@ -52,7 +52,6 @@ def _prepare_context_prompts(
     *, base_prompt: str, sample_answers: list[list[str]], example_index: int
 ) -> list[str]:
     """Construct prompts combining base context with sampled answers."""
-
     contexts: list[str] = []
     for sample_idx, answers in enumerate(sample_answers):
         if example_index >= len(answers):
@@ -69,7 +68,6 @@ def _prepare_context_prompts(
 
 def _sanitize_temperature(value: float | None) -> float | None:
     """Map non-positive temperatures to ``None`` for greedy decoding."""
-
     if value is None:
         return None
 
@@ -101,11 +99,8 @@ def main(config: DictConfig) -> None:
         max_examples=config.generation.max_examples,
     )
 
-    model, tokenizer = load_model_for_generation(config.models.eval_model)
-
     reference_answers = generate_answers_from_qa_data(
-        model=model,
-        tokenizer=tokenizer,
+        eval_model=config.models.eval_model,
         contexts=contexts,
         questions=questions,
         answers=answers,
@@ -127,8 +122,7 @@ def main(config: DictConfig) -> None:
     for sample_idx in range(config.selfcheckgpt.num_samples):
         sample_datasets.append(
             generated_answers=generate_answers_from_qa_data(
-                model=model,
-                tokenizer=tokenizer,
+                eval_model=config.models.eval_model,
                 contexts=contexts,
                 questions=questions,
                 answers=answers,
@@ -166,9 +160,7 @@ def main(config: DictConfig) -> None:
         zip(contexts, questions, answers)
     ):
         if idx >= len(reference_generated_answers):
-            logger.warning(
-                "Missing reference answer for index %s; skipping", idx
-            )
+            logger.warning("Missing reference answer for index %s; skipping", idx)
             continue
 
         reference_answer = reference_generated_answers[idx]
