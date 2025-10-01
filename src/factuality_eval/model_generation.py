@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterable
 
 from datasets import Dataset
+from openai import OpenAI
 from tqdm.auto import tqdm
 from transformers import (
     AutoModelForCausalLM,
@@ -77,9 +78,45 @@ def generate_single_answer(
     return content
 
 
+def generate_single_answer_from_openai(
+    client: OpenAI,
+    eval_model: str,
+    context: Iterable[str],
+    question: str | None,
+    lang: Lang,
+    max_new_tokens: int = 32768,
+    temperature: float | None = None,
+) -> str:
+    """Generate a single answer from OpenAI for the given context and question.
+
+    Args:
+        client: An OpenAI client used for answer generation.
+        context: The context to condition the generation on.
+        question: The question to condition the generation on.
+        lang: Language passed to the prompt formatter.
+        max_new_tokens: The maximum number of new tokens to generate.
+        temperature: The temperature to use for generation. If None, the
+            default temperature of the model is used.
+
+    Returns:
+        The generated answer.
+    """
+    prompt = PromptUtils.format_context(list(context), question, lang=lang)
+    messages = [{"role": "user", "content": prompt}]
+
+    # Only include temperature in generation parameters if it's specified
+    generation_kwargs: dict[str, int | float] = {"max_tokens": max_new_tokens}
+    if temperature is not None:
+        generation_kwargs["temperature"] = temperature
+
+    response = client.chat.completions.create(
+        model=eval_model, messages=messages, **generation_kwargs
+    )
+    return response.choices[0].message.content.strip("\n")
+
+
 def generate_answers_from_qa_data(
-    model: PreTrainedModel,
-    tokenizer: PreTrainedTokenizerBase,
+    eval_model: str,
     contexts: list[list[str]],
     questions: list[str],
     answers: list[str],
@@ -91,10 +128,8 @@ def generate_answers_from_qa_data(
     """Generate answers from a model for given QA data.
 
     Args:
-        model:
-            A causal language model used for answer generation.
-        tokenizer:
-            The tokenizer paired with ``model``.
+        eval_model:
+            The name of the model to use for generation.
         dataset:
             A Hugging Face ``Dataset`` containing ``context``, ``question`` and
             ``answer`` columns.
@@ -109,6 +144,12 @@ def generate_answers_from_qa_data(
     logger.info("Generating answers from model to be evaluated...")
 
     records: list[dict] = list()
+
+    if eval_model.startswith("openai/"):
+        model = None
+        tokenizer = None
+    else:
+        model, tokenizer = load_model_for_generation(eval_model)
 
     # Load the existing dataset if it exists
     if output_jsonl_path is not None and output_jsonl_path.exists():
@@ -127,15 +168,26 @@ def generate_answers_from_qa_data(
             continue
 
         try:
-            answer = generate_single_answer(
-                tokenizer=tokenizer,
-                model=model,
-                context=context,
-                question=question,
-                lang=lang,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-            )
+            if tokenizer is None or model is None:
+                answer = generate_single_answer_from_openai(
+                    client=OpenAI(),
+                    eval_model=eval_model.split("/")[1],
+                    context=context,
+                    question=question,
+                    lang=lang,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                )
+            else:
+                answer = generate_single_answer(
+                    tokenizer=tokenizer,
+                    model=model,
+                    context=context,
+                    question=question,
+                    lang=lang,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                )
         except Exception as e:
             logger.error(f"Error during generation: {e}. Skipping...")
             continue

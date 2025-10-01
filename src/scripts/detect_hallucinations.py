@@ -16,10 +16,7 @@ from factuality_eval.hallucination_detection import (
     detect_hallucinations,
     evaluate_predicted_answers,
 )
-from factuality_eval.model_generation import (
-    generate_answers_from_qa_data,
-    load_model_for_generation,
-)
+from factuality_eval.model_generation import generate_answers_from_qa_data
 
 load_dotenv()
 
@@ -54,11 +51,8 @@ def main(config: DictConfig) -> None:
         max_examples=config.generation.max_examples,
     )
 
-    model, tokenizer = load_model_for_generation(config.models.eval_model)
-
     generated_answers = generate_answers_from_qa_data(
-        model=model,
-        tokenizer=tokenizer,
+        eval_model=config.models.eval_model,
         contexts=contexts,
         questions=questions,
         answers=answers,
