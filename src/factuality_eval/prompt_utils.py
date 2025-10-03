@@ -60,6 +60,15 @@ class PromptUtils:
         return Template(path.read_text(encoding="utf-8"))
 
     @staticmethod
+    def load_selfcheckgpt_prompt(lang: Lang) -> Template:
+        """Load the SelfCheckGPT prompt template.
+
+        Returns:
+            Template object for the SelfCheckGPT prompt.
+        """
+        return PromptUtils.load_prompt(f"selfcheckgpt_prompt_{lang.lower()}.txt")
+
+    @staticmethod
     def format_context(context: list[str], question: str | None, lang: Lang) -> str:
         """Format context and question into a prompt.
 

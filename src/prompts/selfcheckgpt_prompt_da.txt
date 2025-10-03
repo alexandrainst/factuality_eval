@@ -1,0 +1,3 @@
+Kontekst: {context}\n
+Sætning: {sentence}\n
+Er sætningen understøttet af konteksten ovenfor? Svar Ja eller Nej:
