@@ -140,8 +140,6 @@ def main(config: DictConfig) -> None:
     evaluator = SelfCheckGPTEvaluator(
         client=OpenAI(),
         model=getattr(config.selfcheckgpt, "prompt_model", "gpt-4o-mini"),
-        max_retries=getattr(config.selfcheckgpt, "max_retries", 3),
-        request_timeout=getattr(config.selfcheckgpt, "request_timeout", None),
     )
 
     reference_dataset = reference_answers

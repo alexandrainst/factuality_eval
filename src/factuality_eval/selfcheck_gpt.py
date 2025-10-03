@@ -3,19 +3,14 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
 from typing import Any, Iterable
 
 from openai import OpenAI
 
-logger = logging.getLogger(__name__)
+from factuality_eval.train import PromptUtils
 
-PROMPT_TEMPLATE = (
-    "Context: {context}\n"
-    "Sentence: {sentence}\n"
-    "Is the sentence supported by the context above? Answer Yes or No:"
-)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -32,14 +27,7 @@ class PromptVerdict:
 class SelfCheckGPTEvaluator:
     """Convenience wrapper around the OpenAI Responses API for SelfCheckGPT prompts."""
 
-    def __init__(
-        self,
-        client: OpenAI,
-        model: str,
-        *,
-        max_retries: int = 3,
-        request_timeout: float | None = None,
-    ) -> None:
+    def __init__(self, client: OpenAI, model: str) -> None:
         """Initialize the evaluator.
 
         Args:
@@ -47,15 +35,9 @@ class SelfCheckGPTEvaluator:
                 An initialized OpenAI client.
             model:
                 The model name to use for evaluation.
-            max_retries:
-                Maximum number of retries for failed API calls.
-            request_timeout:
-                Optional timeout in seconds for each API call.
         """
         self._client = client
         self._model = model
-        self._max_retries = max(1, max_retries)
-        self._request_timeout = request_timeout
 
     def score_answer_against_contexts(
         self, answer: str, contexts: Iterable[str]
@@ -74,8 +56,8 @@ class SelfCheckGPTEvaluator:
         verdicts: list[PromptVerdict] = []
         for idx, context in enumerate(contexts):
             trimmed_context = context.strip()
-            prompt = PROMPT_TEMPLATE.format(context=trimmed_context, sentence=answer)
-            raw_response = self._call_with_retries(prompt)
+            prompt = PromptUtils.load_selfcheckgpt_prompt(trimmed_context, answer)
+            raw_response = self._call(prompt)
             label, score = self._map_response_to_score(raw_response)
             verdicts.append(
                 PromptVerdict(
@@ -89,39 +71,17 @@ class SelfCheckGPTEvaluator:
 
         return verdicts
 
-    def _call_with_retries(self, prompt: str) -> str | None:
-        last_error: Exception | None = None
+    def _call(self, prompt: str) -> str | None:
         request_options: dict[str, Any] = {}
-        if self._request_timeout is not None:
-            request_options["timeout"] = self._request_timeout
 
-        for attempt in range(self._max_retries):
-            try:
-                response = self._client.responses.create(
-                    model=self._model,
-                    input=prompt,
-                    temperature=0.0,
-                    max_output_tokens=16,
-                    **request_options,
-                )
-                return response.output_text.strip()
-            except Exception as exc:  # noqa: BLE001 - OpenAI raises multiple subclasses
-                last_error = exc
-                wait_seconds = min(2**attempt, 10)
-                logger.warning(
-                    "SelfCheckGPT prompt call failed (attempt %s/%s): %s",
-                    attempt + 1,
-                    self._max_retries,
-                    exc,
-                )
-                time.sleep(wait_seconds)
-
-        logger.error(
-            "SelfCheckGPT prompt call failed after %s attempts", self._max_retries
+        response = self._client.responses.create(
+            model=self._model,
+            input=prompt,
+            temperature=0.0,
+            max_output_tokens=16,
+            **request_options,
         )
-        if last_error is not None:
-            logger.debug("Last error: %s", last_error)
-        return None
+        return response.output_text.strip()
 
     @staticmethod
     def _map_response_to_score(response: str | None) -> tuple[str, float]:
@@ -129,9 +89,9 @@ class SelfCheckGPTEvaluator:
             return "N/A", 0.5
 
         normalized = response.strip().lower()
-        if normalized.startswith("yes"):
-            return "Yes", 0.0
-        if normalized.startswith("no"):
-            return "No", 1.0
+        if normalized.startswith("ja"):
+            return "Ja", 0.0
+        if normalized.startswith("nej"):
+            return "Nej", 1.0
 
         return "N/A", 0.5
