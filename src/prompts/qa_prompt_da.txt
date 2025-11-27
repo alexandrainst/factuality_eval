@@ -1,0 +1,6 @@
+Besvar kort følgende spørgsmål:
+${question}
+Husk, at dit svar udelukkende skal være baseret på følgende ${num_passages} passager:
+${context}
+Hvis passagerne ikke indeholder de nødvendige oplysninger til at besvare spørgsmålet, bedes du svare med: "Kan ikke svare baseret på de givne passager."
+output:
