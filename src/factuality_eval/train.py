@@ -1,5 +1,7 @@
 """Train utilities for hallucination evaluation."""
 
+from typing import cast
+
 from datasets import Dataset
 
 from factuality_eval.prompt_utils import Lang, PromptUtils
@@ -17,11 +19,10 @@ def format_dataset_to_ragtruth(
     Returns:
         The ragtruth formatted dataset.
     """
-    lang: Lang = language
     return dataset.map(
         lambda x: {
             "prompt": PromptUtils.format_context(
-                x["context"], x["question"], lang=lang
+                x["context"], x["question"], lang=cast(Lang, language)
             ),
             "answer": x["answer"],
             "labels": x["hallucinated_labels"],
