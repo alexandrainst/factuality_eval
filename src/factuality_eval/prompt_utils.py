@@ -32,6 +32,24 @@ LANG_TO_FULL_NAME = {
     "cn": "Chinese",
     "hu": "Hungarian",
 }
+    
+YES_WORDS = {
+    "da": "ja",
+    "de": "ja",
+    "en": "yes",
+    "no": "ja",
+    "sv": "ja",
+    "is": "já",
+}
+
+NO_WORDS = {
+    "da": "nej",
+    "de": "nein",
+    "en": "no",
+    "no": "nei",
+    "sv": "nej",
+    "is": "nei",
+}
 
 PROMPT_DIR = Path(__file__).parent.parent / "prompts"
 
@@ -60,14 +78,15 @@ class PromptUtils:
         return Template(path.read_text(encoding="utf-8"))
 
     @staticmethod
-    def load_selfcheckgpt_prompt(lang: Lang) -> Template:
+    def load_selfcheckgpt_prompt(context: str, sentence: str, lang: Lang) -> Template:
         """Load the SelfCheckGPT prompt template.
 
         Returns:
             Template object for the SelfCheckGPT prompt.
         """
-        return PromptUtils.load_prompt(f"selfcheckgpt_prompt_{lang.lower()}.txt")
-
+        tmpl = PromptUtils.load_prompt(f"selfcheckgpt_prompt_{lang.lower()}.txt")
+        return tmpl.substitute(context=context, sentence=sentence)
+    
     @staticmethod
     def format_context(context: list[str], question: str | None, lang: Lang) -> str:
         """Format context and question into a prompt.
