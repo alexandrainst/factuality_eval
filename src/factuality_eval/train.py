@@ -17,10 +17,11 @@ def format_dataset_to_ragtruth(
     Returns:
         The ragtruth formatted dataset.
     """
+    lang: Lang = language
     return dataset.map(
         lambda x: {
             "prompt": PromptUtils.format_context(
-                x["context"], x["question"], lang=language
+                x["context"], x["question"], lang=lang
             ),
             "answer": x["answer"],
             "labels": x["hallucinated_labels"],
