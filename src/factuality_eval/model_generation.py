@@ -72,7 +72,6 @@ def generate_single_answer(
     except ValueError:
         index = 0
 
-    tokenizer.decode(output_ids[:index], skip_special_tokens=True).strip("\n")
     content = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
     if '"\noutput:\n\n' in content:
         content = content.split('"\noutput:\n\n')[-1]

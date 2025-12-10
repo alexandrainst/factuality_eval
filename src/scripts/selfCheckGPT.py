@@ -88,8 +88,15 @@ def main(config: DictConfig) -> None:
         lang=config.language,
     )
     records: list[dict] = list()
-    self_checkgpt_output_jsonl_path = Path("data", "final", "selfcheckgpt", f"{config.base_dataset.id}-{config.language}-"
-        f"{config.models.eval_model.split('/')[1]}_ongoing_evaluation.jsonl")
+    self_checkgpt_output_jsonl_path = Path(
+        "data",
+        "final",
+        "selfcheckgpt",
+        (
+            f"{config.base_dataset.id}-{config.language}-"
+            f"{config.models.eval_model.split('/')[1]}_ongoing_evaluation.jsonl"
+        ),
+    )
     # Load the existing dataset if it exists
     if self_checkgpt_output_jsonl_path is not None and self_checkgpt_output_jsonl_path.exists():
         logger.info(f"Loading existing selfcheckgpt evaluations from {self_checkgpt_output_jsonl_path}...")

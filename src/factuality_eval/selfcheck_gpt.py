@@ -8,7 +8,7 @@ from typing import Any, Iterable
 
 from openai import OpenAI
 
-from factuality_eval.train import PromptUtils
+from factuality_eval.prompt_utils import PromptUtils
 
 from factuality_eval.prompt_utils import YES_WORDS, NO_WORDS
 logger = logging.getLogger(__name__)
@@ -39,8 +39,8 @@ class SelfCheckGPTEvaluator:
         self._client = client
         self._model = model
         self.lang = lang
-        
-        
+
+
     def score_samples_against_reference(
         self, reference: dict[str, str], samples: list[dict[str, str]]
     ) -> list[PromptVerdict]:
@@ -56,10 +56,10 @@ class SelfCheckGPTEvaluator:
             List of verdicts with label and numeric score for each context.
         """
         verdicts: list[PromptVerdict] = []
-        
+
         sentences = reference["answer"].split('.')
         for idx, sentence in enumerate(sentences):
-            
+
             for s_idx, sample in enumerate(samples):
 
                 prompt = PromptUtils.load_selfcheckgpt_prompt(sentence, sample["answer"], self.lang)
@@ -94,7 +94,7 @@ class SelfCheckGPTEvaluator:
 
         yes_word = YES_WORDS.get(self.lang)
         no_word = NO_WORDS.get(self.lang)
-        
+
         normalized = response.strip().lower()
         if normalized.startswith(yes_word):
             return 0.0
