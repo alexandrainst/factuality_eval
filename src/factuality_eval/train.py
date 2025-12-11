@@ -8,7 +8,7 @@ from .prompt_utils import Lang, PromptUtils
 
 
 def format_dataset_to_ragtruth(
-    dataset: Dataset, language: Lang = "da", split: str = "train"
+    dataset: Dataset, language: Lang = "en", split: str = "train"
 ) -> Dataset:
     """Format the dataset to ragtruth format.
 
