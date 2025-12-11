@@ -18,15 +18,15 @@ def format_dataset_to_ragtruth(
         The ragtruth formatted dataset.
     """
     return dataset.map(
-        lambda x: {
+        lambda x, lang=language: {
             "prompt": PromptUtils.format_context(
-                x["context"], x["question"], lang=language
+                x["context"], x["question"], lang=lang
             ),
             "answer": x["answer"],
             "labels": x["hallucinated_labels"],
             "split": split,
             "task_type": "qa",
-            "language": language,
+            "language": lang,
             "dataset": "ragtruth",
         },
         remove_columns=["question", "context"],
