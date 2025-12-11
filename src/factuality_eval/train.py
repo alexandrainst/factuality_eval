@@ -1,12 +1,16 @@
 """Train utilities for hallucination evaluation."""
 
+import typing as t
+
 from datasets import Dataset
 
-from factuality_eval.prompt_utils import PromptUtils
+from .prompt_utils import PromptUtils
 
 
 def format_dataset_to_ragtruth(
-    dataset: Dataset, language: str = "da", split: str = "train"
+    dataset: Dataset,
+    language: t.Literal["en", "de", "fr", "es", "it", "pl", "cn", "da"] = "da",
+    split: str = "train",
 ) -> Dataset:
     """Format the dataset to ragtruth format.
 
@@ -17,10 +21,13 @@ def format_dataset_to_ragtruth(
     Returns:
         The ragtruth formatted dataset.
     """
-    return dataset.map(
-        lambda x: {
+
+    def _format_row(x: dict[str, t.Any]) -> dict[str, t.Any]:
+        return {
             "prompt": PromptUtils.format_context(
-                x["context"], x["question"], lang=language
+                x["context"],
+                x["question"],
+                lang=language,  # type: ignore[arg-type]
             ),
             "answer": x["answer"],
             "labels": x["hallucinated_labels"],
@@ -28,6 +35,6 @@ def format_dataset_to_ragtruth(
             "task_type": "qa",
             "language": language,
             "dataset": "ragtruth",
-        },
-        remove_columns=["question", "context"],
-    )
+        }
+
+    return dataset.map(_format_row, remove_columns=["question", "context"])
