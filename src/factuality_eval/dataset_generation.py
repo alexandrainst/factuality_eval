@@ -48,10 +48,13 @@ def load_qa_data(
     logger.info(f"Loading base dataset {base_dataset_id!r}...")
     dataset_id = base_dataset_id.split(":")[0]
     subset = base_dataset_id.split(":")[1] if ":" in base_dataset_id else None
-    ds = load_dataset(
-        path=dataset_id, name=subset, split="train"
-    )  # only train exists for the wiki-qa dataset
-    ds = ds.train_test_split(test_size=0.2, seed=42)[split]
+
+    ds = load_dataset(path=dataset_id, name=subset)
+
+    if len(ds.keys()) > 1:  # Dataset is already split
+        ds = ds[split]
+    else:
+        ds = ds[split].train_test_split(test_size=0.2, seed=42)[split]
 
     logger.info("Preparing dataset...")
     contexts: list[list[str]] = [[ctx] for ctx in ds[context_key]]
