@@ -4,11 +4,13 @@ import typing as t
 
 from datasets import Dataset
 
-from .prompt_utils import Lang, PromptUtils
+from .prompt_utils import PromptUtils
 
 
 def format_dataset_to_ragtruth(
-    dataset: Dataset, language: Lang = "en", split: str = "train"
+    dataset: Dataset,
+    language: t.Literal["en", "de", "fr", "es", "it", "pl", "cn", "da"] = "da",
+    split: str = "train",
 ) -> Dataset:
     """Format the dataset to ragtruth format.
 
