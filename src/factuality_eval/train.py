@@ -23,7 +23,9 @@ def format_dataset_to_ragtruth(
     def _format_row(x: dict[str, t.Any]) -> dict[str, t.Any]:
         return {
             "prompt": PromptUtils.format_context(
-                x["context"], x["question"], lang=language
+                x["context"],
+                x["question"],
+                lang=language,  # type: ignore[arg-type]
             ),
             "answer": x["answer"],
             "labels": x["hallucinated_labels"],
