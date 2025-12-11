@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Iterable
 
+import nltk
 from openai import OpenAI
 
-from factuality_eval.prompt_utils import PromptUtils
+from factuality_eval.prompt_utils import NO_WORDS, YES_WORDS, Lang, PromptUtils
 
-from factuality_eval.prompt_utils import YES_WORDS, NO_WORDS
 logger = logging.getLogger(__name__)
 
 
@@ -24,10 +23,11 @@ class PromptVerdict:
     judge_response: str | None
     score: float
 
+
 class SelfCheckGPTEvaluator:
     """Convenience wrapper around the OpenAI Responses API for SelfCheckGPT prompts."""
 
-    def __init__(self, client: OpenAI, model: str, lang: str) -> None:
+    def __init__(self, client: OpenAI, model: str, lang: Lang) -> None:
         """Initialize the evaluator.
 
         Args:
@@ -35,11 +35,12 @@ class SelfCheckGPTEvaluator:
                 An initialized OpenAI client.
             model:
                 The model name to use for evaluation.
+            lang:
+                The language code for evaluation.
         """
         self._client = client
         self._model = model
         self.lang = lang
-
 
     def score_samples_against_reference(
         self, reference: dict[str, str], samples: list[dict[str, str]]
@@ -57,12 +58,14 @@ class SelfCheckGPTEvaluator:
         """
         verdicts: list[PromptVerdict] = []
 
-        sentences = reference["answer"].split('.')
+        sentences = [
+            s.strip() for s in nltk.sent_tokenize(reference["answer"]) if s.strip()
+        ]
         for idx, sentence in enumerate(sentences):
-
             for s_idx, sample in enumerate(samples):
-
-                prompt = PromptUtils.load_selfcheckgpt_prompt(sentence, sample["answer"], self.lang)
+                prompt = PromptUtils.load_selfcheckgpt_prompt(
+                    sentence, sample["answer"], self.lang
+                )
                 judge_response = self._call(prompt)
                 score = self._map_response_to_score(judge_response)
                 verdicts.append(
@@ -77,16 +80,14 @@ class SelfCheckGPTEvaluator:
         return verdicts
 
     def _call(self, prompt: str) -> str | None:
-        request_options: dict[str, Any] = {}
-
-        response = self._client.responses.create(
+        response = self._client.chat.completions.create(
             model=self._model,
-            input=prompt,
+            messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
-            max_output_tokens=16,
-            **request_options,
+            max_tokens=16,
         )
-        return response.output_text.strip()
+        content = response.choices[0].message.content
+        return content.strip() if content else None
 
     def _map_response_to_score(self, response: str | None) -> float:
         if response is None:
@@ -96,9 +97,9 @@ class SelfCheckGPTEvaluator:
         no_word = NO_WORDS.get(self.lang)
 
         normalized = response.strip().lower()
-        if normalized.startswith(yes_word):
+        if yes_word is not None and normalized.startswith(yes_word):
             return 0.0
-        if normalized.startswith(no_word):
+        if no_word is not None and normalized.startswith(no_word):
             return 1.0
 
         return 0.5

@@ -72,5 +72,6 @@ def main(config: DictConfig) -> None:
 
     evaluate_predicted_answers(hallucinations)
 
+
 if __name__ == "__main__":
     main()

@@ -6,8 +6,9 @@ import json
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, cast
 
+import torch
 from datasets import Dataset
 from openai import OpenAI
 from tqdm.auto import tqdm
@@ -61,8 +62,10 @@ def generate_single_answer(
     if temperature is not None:
         generation_kwargs["temperature"] = temperature
 
-    generated_ids = model.generate(**model_inputs, **generation_kwargs)
-    output_ids = generated_ids[0].tolist()
+    generated_ids = model.generate(  # type: ignore[operator]
+        **model_inputs, **generation_kwargs
+    )
+    output_ids: list[int] = cast(torch.Tensor, generated_ids)[0].tolist()
 
     # parsing thinking content (from documentation of Qwen,
     # must be done even if thinking is disabled)
@@ -102,17 +105,16 @@ def generate_single_answer_from_openai(
         The generated answer.
     """
     prompt = PromptUtils.format_context(list(context), question, lang=lang)
-    messages = [{"role": "user", "content": prompt}]
-
-    # Only include temperature in generation parameters if it's specified
-    generation_kwargs: dict[str, int | float] = {"max_tokens": max_new_tokens}
-    if temperature is not None:
-        generation_kwargs["temperature"] = temperature
+    messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
 
     response = client.chat.completions.create(
-        model=eval_model, messages=messages, **generation_kwargs
+        model=eval_model,
+        messages=messages,  # type: ignore[arg-type]
+        max_tokens=max_new_tokens,
+        temperature=temperature if temperature is not None else 1.0,
     )
-    return response.choices[0].message.content.strip("\n")
+    content = response.choices[0].message.content
+    return content.strip("\n") if content else ""
 
 
 def generate_answers_from_qa_data(

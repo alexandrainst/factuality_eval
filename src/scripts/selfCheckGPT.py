@@ -9,14 +9,14 @@ import logging
 from pathlib import Path
 
 import hydra
+import numpy as np
 from dotenv import load_dotenv
 from omegaconf import DictConfig
 from openai import OpenAI
 from tqdm.auto import tqdm
 
-from factuality_eval.dataset_generation import load_qa_data, generate_hash
+from factuality_eval.dataset_generation import generate_hash, load_qa_data
 from factuality_eval.model_generation import generate_answers_from_qa_data
-from factuality_eval.prompt_utils import PromptUtils
 from factuality_eval.selfcheck_gpt import PromptVerdict, SelfCheckGPTEvaluator
 
 load_dotenv()
@@ -32,6 +32,7 @@ def _safe_model_name(model_name: str) -> str:
     config_path="../../config", config_name="hallucination_detection", version_base=None
 )
 def main(config: DictConfig) -> None:
+    """Script for running SelfCheckGPT evaluation."""
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     reference_dataset_name = (
@@ -78,14 +79,12 @@ def main(config: DictConfig) -> None:
                 output_jsonl_path=Path(
                     "data", "final", f"{sample_dataset_name}-{sample_idx}.jsonl"
                 ),
-                temperature=config.selfcheckgpt.sampling_temperature
+                temperature=config.selfcheckgpt.sampling_temperature,
             )
         )
 
     evaluator = SelfCheckGPTEvaluator(
-        client=OpenAI(),
-        model="gpt-4o-mini",
-        lang=config.language,
+        client=OpenAI(), model="gpt-4o-mini", lang=config.language
     )
     records: list[dict] = list()
     self_checkgpt_output_jsonl_path = Path(
@@ -98,8 +97,14 @@ def main(config: DictConfig) -> None:
         ),
     )
     # Load the existing dataset if it exists
-    if self_checkgpt_output_jsonl_path is not None and self_checkgpt_output_jsonl_path.exists():
-        logger.info(f"Loading existing selfcheckgpt evaluations from {self_checkgpt_output_jsonl_path}...")
+    if (
+        self_checkgpt_output_jsonl_path is not None
+        and self_checkgpt_output_jsonl_path.exists()
+    ):
+        logger.info(
+            "Loading existing selfcheckgpt evaluations from %s.",
+            self_checkgpt_output_jsonl_path,
+        )
         with self_checkgpt_output_jsonl_path.open() as f:
             records = [json.loads(line.strip()) for line in f if line.strip()]
 
@@ -108,13 +113,23 @@ def main(config: DictConfig) -> None:
     results = []
     sentence_scores = []
 
-    for idx, reference in enumerate(tqdm(reference_answers, desc="Evaluating with SelfCheckGPT")):
-        hash_ = generate_hash(context=reference["context"], question=reference["question"], answer=reference["answer"])
+    for idx, reference in enumerate(
+        tqdm(reference_answers, desc="Evaluating with SelfCheckGPT")
+    ):
+        hash_ = generate_hash(
+            context=reference["context"],
+            question=reference["question"],
+            answer=reference["answer"],
+        )
         if hash_ in hashes:
             # Read mean_selfcheckgpt_inconsistency from existing records
-            existing_record = next((record for record in records if record["hash"] == hash_), None)
+            existing_record = next(
+                (record for record in records if record["hash"] == hash_), None
+            )
             if existing_record:
-                sentence_scores.append(existing_record.get("mean_selfcheckgpt_inconsistency"))
+                sentence_scores.append(
+                    existing_record.get("mean_selfcheckgpt_inconsistency")
+                )
 
             continue
 
@@ -125,7 +140,7 @@ def main(config: DictConfig) -> None:
         )
         valid_scores = [verdict.score for verdict in verdicts]
         mean_inconsistency = (
-            sum(valid_scores) / len(valid_scores) if valid_scores else None
+            np.nansum(valid_scores) / len(valid_scores) if valid_scores else None
         )
 
         sentence_scores.append(mean_inconsistency)
@@ -152,16 +167,18 @@ def main(config: DictConfig) -> None:
         f"{config.base_dataset.id}-{config.language}-{model_name_safe}-selfcheckgpt_prompt.jsonl"
     )
 
-    results = [
-        {
-            "Average_SelfCheckGPT_Inconsistency": sum(sentence_scores) / len(sentence_scores)
-        }
-    ]
+    valid_sentence_scores = [s for s in sentence_scores if s is not None]
+    avg_inconsistency = (
+        float(np.nansum(valid_sentence_scores) / len(valid_sentence_scores))
+        if valid_sentence_scores
+        else 0.0
+    )
+    results = [{"Average_SelfCheckGPT_Inconsistency": avg_inconsistency}]
     with output_path.open("w", encoding="utf-8") as f:
         for record in results:
             f.write(json.dumps(record) + "\n")
 
-    logger.info("Average SelfCheckGPT inconsistency score: %.4f", sum(sentence_scores) / len(sentence_scores))
+    logger.info("Average SelfCheckGPT inconsistency score: %.4f", avg_inconsistency)
 
     logger.info("Saved detailed results to %s", output_path)
 
