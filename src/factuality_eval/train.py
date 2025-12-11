@@ -4,7 +4,7 @@ import typing as t
 
 from datasets import Dataset
 
-from factuality_eval.prompt_utils import Lang, PromptUtils
+from .prompt_utils import Lang, PromptUtils
 
 
 def format_dataset_to_ragtruth(
