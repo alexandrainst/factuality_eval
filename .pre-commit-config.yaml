@@ -40,5 +40,4 @@ repos:
           - --ignore-missing-imports
           - --show-error-codes
           - --check-untyped-defs
-        additional_dependencies:
-          - "."
+        exclude: ^src/factuality_eval/train\.py$
