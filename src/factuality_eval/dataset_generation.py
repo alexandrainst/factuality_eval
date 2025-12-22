@@ -182,6 +182,10 @@ def generate_hallucinations_from_qa_data(
 
         hallucinated_labels = get_hallucinated_labels(result)
 
+        # Skip samples where labels cannot be reliably determined
+        if hallucinated_labels is None:
+            continue
+
         # Save the record
         record = dict(
             hash=hash_,
@@ -249,7 +253,7 @@ def generate_hash(context: list[str], question: str, answer: str) -> str:
     return hashlib.md5((context[0] + question + answer).encode("utf-8")).hexdigest()
 
 
-def get_hallucinated_labels(hallucinated_dict: dict) -> list[dict]:
+def get_hallucinated_labels(hallucinated_dict: dict) -> list[dict] | None:
     """Get the hallucinated labels from the generation result.
 
     Args:
@@ -257,17 +261,23 @@ def get_hallucinated_labels(hallucinated_dict: dict) -> list[dict]:
             The dictionary from the hallucination generator.
 
     Returns:
-        A list of dictionaries with start, end, and label for each hallucinated part.
+        A list of dictionaries with start, end, and label for each hallucinated part,
+        or None if the labels cannot be reliably determined.
     """
     hallucinated_labels = []
     for part in hallucinated_dict["hallucinated_parts"]:
-        if hallucinated_dict["hallucinated_answer"].count(part) > 1:
-            raise ValueError(
-                f"The part {part!r} appears multiple times in the hallucinated answer "
-                f"{hallucinated_dict['hallucinated_answer']!r}, so could not correctly "
-                "mark the spans."
+        answer = hallucinated_dict["hallucinated_answer"]
+        count = answer.count(part)
+
+        if count > 1:
+            # Cannot reliably label - discard this sample
+            logger.warning(
+                f"Discarding sample - hallucinated part {part!r} appears {count} times "
+                f"in answer, cannot determine which occurrence is hallucinated."
             )
-        start = hallucinated_dict["hallucinated_answer"].find(part)
+            return None
+
+        start = answer.find(part)
         if start != -1:
             hallucinated_labels.append(
                 {"start": start, "end": start + len(part), "label": "hallucinated"}

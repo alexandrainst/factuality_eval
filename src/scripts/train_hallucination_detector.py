@@ -49,10 +49,10 @@ def main(config: DictConfig) -> None:
 
     # Process dataset to ragtruth format
     train_dataset = format_dataset_to_ragtruth(
-        train_test_split["train"], language=config.training.language, split="train"
+        train_test_split["train"], language=config.language, split="train"
     )
     test_dataset = format_dataset_to_ragtruth(
-        train_test_split["test"], language=config.training.language, split="test"
+        train_test_split["test"], language=config.language, split="test"
     )
 
     # Create tokenizer and data collator

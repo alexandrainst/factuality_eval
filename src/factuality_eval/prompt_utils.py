@@ -7,41 +7,164 @@ from pathlib import Path
 from string import Template
 
 # Type for supported languages
-Lang = t.Literal["en", "de", "fr", "es", "it", "pl", "cn", "da"]
+Lang = t.Literal[
+    "bs",
+    "bg",
+    "ca",
+    "hr",
+    "cs",
+    "da",
+    "nl",
+    "en",
+    "et",
+    "fo",
+    "fi",
+    "fr",
+    "de",
+    "el",
+    "hu",
+    "is",
+    "it",
+    "lv",
+    "lt",
+    "no",
+    "pl",
+    "pt",
+    "ro",
+    "sr",
+    "sk",
+    "sl",
+    "es",
+    "sv",
+    "uk",
+]
 
 LANG_TO_PASSAGE = {
-    "da": "afsnit",
-    "en": "passage",
-    "de": "Passage",
-    "fr": "passage",
-    "es": "pasaje",
-    "it": "brano",
-    "pl": "fragment",
-    "cn": "段落",
-    "hu": "szövegrészlet",
+    "bs": "odlomak",  # Bosnian
+    "bg": "пасаж",  # Bulgarian
+    "ca": "passatge",  # Catalan
+    "hr": "odlomak",  # Croatian
+    "cs": "pasáž",  # Czech
+    "da": "afsnit",  # Danish
+    "nl": "passage",  # Dutch
+    "en": "passage",  # English
+    "et": "lõik",  # Estonian
+    "fo": "grein",  # Faroese
+    "fi": "kappale",  # Finnish
+    "fr": "passage",  # French
+    "de": "Passage",  # German
+    "el": "απόσπασμα",  # Greek
+    "hu": "szövegrészlet",  # Hungarian
+    "is": "efnisgrein",  # Icelandic
+    "it": "brano",  # Italian
+    "lv": "posms",  # Latvian
+    "lt": "ištrauka",  # Lithuanian
+    "no": "avsnitt",  # Norwegian
+    "pl": "fragment",  # Polish
+    "pt": "passagem",  # Portuguese
+    "ro": "pasaj",  # Romanian
+    "sr": "одломак",  # Serbian
+    "sk": "pasáž",  # Slovak
+    "sl": "odlomek",  # Slovenian
+    "es": "pasaje",  # Spanish
+    "sv": "stycke",  # Swedish
+    "uk": "уривок",  # Ukrainian
 }
 
 LANG_TO_FULL_NAME = {
+    "bs": "Bosnian",
+    "bg": "Bulgarian",
+    "ca": "Catalan",
+    "hr": "Croatian",
+    "cs": "Czech",
     "da": "Danish",
+    "nl": "Dutch",
     "en": "English",
-    "de": "German",
+    "et": "Estonian",
+    "fo": "Faroese",
+    "fi": "Finnish",
     "fr": "French",
-    "es": "Spanish",
-    "it": "Italian",
-    "pl": "Polish",
-    "cn": "Chinese",
+    "de": "German",
+    "el": "Greek",
     "hu": "Hungarian",
+    "is": "Icelandic",
+    "it": "Italian",
+    "lv": "Latvian",
+    "lt": "Lithuanian",
+    "no": "Norwegian",
+    "pl": "Polish",
+    "pt": "Portuguese",
+    "ro": "Romanian",
+    "sr": "Serbian",
+    "sk": "Slovak",
+    "sl": "Slovenian",
+    "es": "Spanish",
+    "sv": "Swedish",
+    "uk": "Ukrainian",
 }
 
-YES_WORDS = {"da": "ja", "de": "ja", "en": "yes", "no": "ja", "sv": "ja", "is": "já"}
+YES_WORDS = {
+    "bs": "da",
+    "bg": "да",
+    "ca": "sí",
+    "hr": "da",
+    "cs": "ano",
+    "da": "ja",
+    "nl": "ja",
+    "en": "yes",
+    "et": "jah",
+    "fo": "ja",
+    "fi": "kyllä",
+    "fr": "oui",
+    "de": "ja",
+    "el": "ναι",
+    "hu": "igen",
+    "is": "já",
+    "it": "sì",
+    "lv": "jā",
+    "lt": "taip",
+    "no": "ja",
+    "pl": "tak",
+    "pt": "sim",
+    "ro": "da",
+    "sr": "да",
+    "sk": "áno",
+    "sl": "da",
+    "es": "sí",
+    "sv": "ja",
+    "uk": "так",
+}
 
 NO_WORDS = {
+    "bs": "ne",
+    "bg": "не",
+    "ca": "no",
+    "hr": "ne",
+    "cs": "ne",
     "da": "nej",
-    "de": "nein",
+    "nl": "nee",
     "en": "no",
-    "no": "nei",
-    "sv": "nej",
+    "et": "ei",
+    "fo": "nei",
+    "fi": "ei",
+    "fr": "non",
+    "de": "nein",
+    "el": "όχι",
+    "hu": "nem",
     "is": "nei",
+    "it": "no",
+    "lv": "nē",
+    "lt": "ne",
+    "no": "nei",
+    "pl": "nie",
+    "pt": "não",
+    "ro": "nu",
+    "sr": "не",
+    "sk": "nie",
+    "sl": "ne",
+    "es": "no",
+    "sv": "nej",
+    "uk": "ні",
 }
 
 PROMPT_DIR = Path(__file__).parent.parent / "prompts"
