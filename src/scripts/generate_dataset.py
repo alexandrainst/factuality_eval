@@ -32,13 +32,11 @@ def main(config: DictConfig) -> None:
     """
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    target_dataset_name = (
-        f"{config.base_dataset.id.split('/')[-1].replace(':', '-')}-hallucinated"
-    )
+    target_dataset_name = f"{config.base_dataset.id}-synthetic-hallucinations"
 
     # Generate the hallucination dataset
     contexts, questions, answers = load_qa_data(
-        base_dataset_id=config.base_dataset.id,
+        base_dataset_id=f"{config.base_dataset.organisation}/{config.base_dataset.id}:{config.language}",
         split=config.base_dataset.split,
         context_key=config.base_dataset.context_key,
         question_key=config.base_dataset.question_key,
@@ -56,14 +54,14 @@ def main(config: DictConfig) -> None:
         questions=questions,
         answers=answers,
         intensities=intensities,
-        model=config.model,
-        temperature=config.temperature,
+        model=config.models.hallu_gen_model,
         output_jsonl_path=Path("data", "final", f"{target_dataset_name}.jsonl"),
     )
 
     # Push the generated dataset to the Hugging Face Hub
     dataset.push_to_hub(
         repo_id=f"{config.hub_organisation}/{target_dataset_name}",
+        config_name=config.language,
         private=config.private,
     )
 
