@@ -1,0 +1,6 @@
+Stručne odpovedzte na nasledujúcu otázku:
+${question}
+Majte na pamäti, že vaša odpoveď by mala byť striktne založená na nasledujúcich ${num_passages} pasážach:
+${context}
+V prípade, že pasáže neobsahujú potrebné informácie na zodpovedanie otázky, odpovedzte prosím: "Nie je možné odpovedať na základe daných pasáží."
+výstup:

@@ -1,0 +1,6 @@
+Ukratko odgovorite na sljedeće pitanje:
+${question}
+Imajte na umu da vaš odgovor treba biti strogo temeljen na sljedećih ${num_passages} odlomaka:
+${context}
+U slučaju da odlomci ne sadrže potrebne informacije za odgovor na pitanje, molimo odgovorite s: "Nije moguće odgovoriti na temelju danih odlomaka."
+izlaz:

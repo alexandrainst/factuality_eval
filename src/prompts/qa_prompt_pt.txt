@@ -1,0 +1,6 @@
+Responda brevemente à seguinte pergunta:
+${question}
+Tenha em mente que a sua resposta deve ser estritamente baseada nas seguintes ${num_passages} passagens:
+${context}
+Caso as passagens não contenham a informação necessária para responder à pergunta, por favor responda com: "Não é possível responder com base nas passagens fornecidas."
+saída:

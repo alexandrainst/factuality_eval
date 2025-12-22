@@ -1,0 +1,6 @@
+Respon breument a la següent pregunta:
+${question}
+Tingues en compte que la teva resposta ha d'estar estrictament basada en els següents ${num_passages} passatges:
+${context}
+En cas que els passatges no continguin la informació necessària per respondre la pregunta, si us plau respon amb: "No es pot respondre basant-se en els passatges donats."
+sortida:

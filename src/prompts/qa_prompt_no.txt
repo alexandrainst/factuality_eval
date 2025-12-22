@@ -1,0 +1,6 @@
+Svar kort på følgende spørsmål:
+${question}
+Husk at svaret ditt skal være strengt basert på følgende ${num_passages} avsnitt:
+${context}
+Hvis avsnittene ikke inneholder nødvendig informasjon for å svare på spørsmålet, vennligst svar med: "Kan ikke svare basert på de gitte avsnittene."
+utdata:

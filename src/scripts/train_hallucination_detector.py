@@ -41,10 +41,12 @@ def main(config: DictConfig) -> None:
         config:
             The Hydra config for your project.
     """
-    target_dataset_name = f"{config.base_dataset.id}-{config.language}-hallucinated"
+    target_dataset_name = f"{config.base_dataset.id}-synthetic-hallucinations"
 
     # Load from hub
-    dataset = load_dataset(f"{config.hub_organisation}/{target_dataset_name}")
+    dataset = load_dataset(
+        f"{config.hub_organisation}/{target_dataset_name}", name=config.language
+    )
     train_test_split = dataset["train"].train_test_split(test_size=0.2, seed=42)
 
     # Process dataset to ragtruth format

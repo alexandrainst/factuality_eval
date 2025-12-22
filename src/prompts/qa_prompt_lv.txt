@@ -1,0 +1,6 @@
+Īsi atbildiet uz šādu jautājumu:
+${question}
+Ņemiet vērā, ka jūsu atbildei jābūt strikti balstītai uz šādiem ${num_passages} fragmentiem:
+${context}
+Ja fragmenti nesatur nepieciešamo informāciju, lai atbildētu uz jautājumu, lūdzu, atbildiet ar: "Nevar atbildēt, pamatojoties uz dotajiem fragmentiem."
+izvade:
