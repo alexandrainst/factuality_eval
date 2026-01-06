@@ -30,10 +30,11 @@ training:
   learning_rate: 1e-5
   weight_decay: 0.01
   push_to_hub: True
+  max_length: 8192
 
 models:
   hallu_detect_model: mmBERT-small
-  pretrained_model: jhu-clsp/ettin-encoder-17m
+  pretrained_model: jhu-clsp/mmBERT-small
   eval_model: Qwen/Qwen3-0.6B
   hallu_gen_model: gpt-4.1-mini
 

@@ -59,7 +59,8 @@ def main(config: DictConfig) -> None:
 
     # Create tokenizer and data collator
     tokenizer = AutoTokenizer.from_pretrained(
-        config.models.pretrained_model, trust_remote_code=True, use_safetensors=True
+        config.models.pretrained_model,
+        trust_remote_code=True,  # , use_safetensors=True
     )
     data_collator = DataCollatorForTokenClassification(
         tokenizer=tokenizer, label_pad_token_id=-100
@@ -67,10 +68,14 @@ def main(config: DictConfig) -> None:
 
     # Create lettucedetect datasets
     train_hallu_dataset = HallucinationDataset(
-        generate_lettucedetect_hallucination_samples(train_dataset), tokenizer
+        generate_lettucedetect_hallucination_samples(train_dataset),
+        tokenizer,
+        max_length=config.training.max_length,
     )
     test_hallu_dataset = HallucinationDataset(
-        generate_lettucedetect_hallucination_samples(test_dataset), tokenizer
+        generate_lettucedetect_hallucination_samples(test_dataset),
+        tokenizer,
+        max_length=config.training.max_length,
     )
 
     # Create data loaders
@@ -90,7 +95,7 @@ def main(config: DictConfig) -> None:
     # Check if model already exists
     model_save_path = (
         f"{config.training.output_dir}/"
-        f"{config.models.hallu_detect_model}-{config.base_dataset.id}-{config.language}"
+        f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}"
     )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if os.path.exists(model_save_path) and os.path.isdir(model_save_path):
@@ -110,7 +115,7 @@ def main(config: DictConfig) -> None:
             config.models.pretrained_model,
             num_labels=2,
             trust_remote_code=True,
-            use_safetensors=True,
+            # use_safetensors=True,
         )
 
         trainer = Trainer(
@@ -120,21 +125,19 @@ def main(config: DictConfig) -> None:
             test_loader=test_loader,
             epochs=config.training.epochs,
             learning_rate=config.training.learning_rate,
-            save_path=f"{config.training.output_dir}/{config.models.hallu_detect_model}-{config.base_dataset.id}-{config.language}",
+            save_path=model_save_path,
         )
 
         logging.info("Starting training...")
         trainer.train()
 
         if config.training.push_to_hub:
-            model.push_to_hub(
-                repo_id=f"{config.hub_organisation}/{config.models.hallu_detect_model}-{config.base_dataset.id}-{config.language}",
-                private=config.private,
+            hub_repo_id = (
+                f"{config.hub_organisation}/"
+                f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}"
             )
-            tokenizer.push_to_hub(
-                repo_id=f"{config.hub_organisation}/{config.models.hallu_detect_model}-{config.base_dataset.id}-{config.language}",
-                private=config.private,
-            )
+            model.push_to_hub(repo_id=hub_repo_id, private=config.private)
+            tokenizer.push_to_hub(repo_id=hub_repo_id, private=config.private)
 
 
 if __name__ == "__main__":
