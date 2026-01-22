@@ -69,17 +69,16 @@ def generate_single_answer(
     )
     output_ids: list[int] = cast(torch.Tensor, generated_ids)[0].tolist()
 
-    # parsing thinking content (from documentation of Qwen,
-    # must be done even if thinking is disabled)
-    try:
-        # rindex finding 151668 (</think>)
-        index = len(output_ids) - output_ids[::-1].index(151668)
-    except ValueError:
-        index = 0
+    content = tokenizer.decode(output_ids, skip_special_tokens=False)
 
-    content = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
-    if '"\noutput:\n\n' in content:
-        content = content.split('"\noutput:\n\n')[-1]
+    # Clear generated content of special tokens
+    if tokenizer.bos_token is not None:
+        content = content.split(tokenizer.bos_token)[-1]
+    if "</think>" in content:
+        content = content.split("</think>")[-1]
+    content = content.strip(tokenizer.eos_token)
+    content = content.strip("\n")
+
     return content
 
 
