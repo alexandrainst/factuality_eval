@@ -41,6 +41,8 @@ def load_qa_data(
             Whether the answers are in SQuAD format.
         testing:
             If True, only load a small subset of the data for testing purposes.
+        max_examples:
+            Maximum number of data samples. If -1, it will use all samples.
 
     Returns:
         A tuple of (contexts, questions, answers).
@@ -141,11 +143,12 @@ def generate_hallucinations_from_qa_data(
             A list of hallucination intensities for each QA pair.
         model:
             The model name to use for hallucination generation.
-        temperature:
-            The temperature to use for the model during generation.
         output_jsonl_path:
             The path to save the generated dataset in JSONL format, or None to skip
             saving.
+        temperature:
+            The temperature to use for the model during generation. If None, the
+            default temperature is used. Defaults to None.
 
     Returns:
         A Dataset containing both original and hallucinated QA pairs.
@@ -178,9 +181,8 @@ def generate_hallucinations_from_qa_data(
             )
         except Exception as e:
             logger.error(f"Error during generation: {e}. Skipping...")
-            continue
 
-        hallucinated_labels = get_hallucinated_labels(result)
+        hallucinated_labels = get_hallucinated_labels(hallucinated_dict=result)
 
         # Skip samples where labels cannot be reliably determined
         if hallucinated_labels is None:

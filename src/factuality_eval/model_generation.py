@@ -40,11 +40,13 @@ def generate_single_answer(
         tokenizer: The tokenizer paired with ``model``.
         model: A causal language model used for answer generation.
         context: The context to condition the generation on.
-        question: The question to condition the generation on.
+        question (str, optional): The question to condition the generation on.
+            Defaults to None.
         lang: Language passed to the prompt formatter.
-        max_new_tokens: The maximum number of new tokens to generate.
-        temperature: The temperature to use for generation. If None, the
-            default temperature of the model is used.
+        max_new_tokens (int, optional): The maximum number of new tokens to generate.
+            Defaults to 32768.
+        temperature (float, optional): The temperature to use for generation.
+            Defaults to None (use the model's default temperature).
 
     Returns:
         The generated answer.
@@ -130,18 +132,27 @@ def generate_answers_from_qa_data(
     """Generate answers from a model for given QA data.
 
     Args:
-        eval_model:
-            The name of the model to use for generation.
-        dataset:
-            A Hugging Face ``Dataset`` containing ``context``, ``question`` and
-            ``answer`` columns.
-        output_jsonl_path:
-            Optional path used to cache generations to disk.
-        lang:
-            Language passed to the prompt formatter.
+        eval_model (str): The name of the model to use for generation. If the name
+            starts with ``"openai/"``, the OpenAI API is used; otherwise, a local
+            Hugging Face model is loaded.
+        contexts (list[list[str]]): A list of contexts, where each context is a
+            list of strings to condition the generation on.
+        questions (list[str]): A list of questions corresponding to each context.
+        answers (list[str]): The original reference answers, used only to compute
+            cache hashes and avoid regenerating duplicates.
+        output_jsonl_path (Path, optional): Path to a JSONL file used to cache
+            generations. If the file exists, previously generated samples are
+            loaded and reused. Defaults to None.
+        max_new_tokens (int, optional): The maximum number of new tokens to
+            generate for each answer. Defaults to 32768.
+        temperature (float, optional): The temperature to use for generation.
+            Defaults to None (use the model's default temperature).
+        lang (Lang, optional): Language passed to the prompt formatter.
+            Defaults to ``"da"``.
 
     Returns:
-        A Dataset containing both original and generated QA pairs.
+        Dataset: A Hugging Face ``Dataset`` containing the generated QA pairs
+        with columns ``"context"``, ``"question"``, and ``"answer"``.
     """
     logger.info("Generating answers from model to be evaluated...")
 

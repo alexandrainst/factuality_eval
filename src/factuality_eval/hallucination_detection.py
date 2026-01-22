@@ -58,8 +58,6 @@ def evaluate_predicted_answers(hallucinations: dict) -> None:
         hallucinations:
             A dictionary with the predicted answers and ground truth hallucinated parts.
 
-    Returns:
-        None
     """
     logger.info("Evaluating model answers for hallucinations...")
 
