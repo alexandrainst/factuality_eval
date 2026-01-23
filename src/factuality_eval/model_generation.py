@@ -76,8 +76,8 @@ def generate_single_answer(
         content = content.split(tokenizer.bos_token)[-1]
     if "</think>" in content:
         content = content.split("</think>")[-1]
-    content = content.strip(tokenizer.eos_token)
-    content = content.strip("\n")
+    content.replace(tokenizer.eos_token, "")
+    content.replace("\n", "")
 
     return content
 
