@@ -40,4 +40,3 @@ repos:
           - --ignore-missing-imports
           - --show-error-codes
           - --check-untyped-defs
-        exclude: ^src/factuality_eval/train\.py$

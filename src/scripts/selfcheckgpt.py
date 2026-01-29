@@ -17,7 +17,7 @@ from tqdm.auto import tqdm
 
 from factuality_eval.dataset_generation import generate_hash, load_qa_data
 from factuality_eval.model_generation import generate_answers_from_qa_data
-from factuality_eval.selfcheck_gpt import PromptVerdict, SelfCheckGPTEvaluator
+from factuality_eval.selfcheckgpt import PromptVerdict, SelfCheckGPTEvaluator
 
 load_dotenv()
 
@@ -178,9 +178,9 @@ def main(config: DictConfig) -> None:
         for record in results:
             f.write(json.dumps(record) + "\n")
 
-    logger.info("Average SelfCheckGPT inconsistency score: %.4f", avg_inconsistency)
+    logger.info(f"Average SelfCheckGPT inconsistency score: {avg_inconsistency}")
 
-    logger.info("Saved detailed results to %s", output_path)
+    logger.info(f"Saved detailed results to {output_path}")
 
 
 if __name__ == "__main__":

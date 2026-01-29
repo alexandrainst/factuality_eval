@@ -112,10 +112,7 @@ def main(config: DictConfig) -> None:
 
     else:
         model = AutoModelForTokenClassification.from_pretrained(
-            config.models.pretrained_model,
-            num_labels=2,
-            trust_remote_code=True,
-            # use_safetensors=True,
+            config.models.pretrained_model, num_labels=2, trust_remote_code=True
         )
 
         trainer = Trainer(
