@@ -42,7 +42,7 @@ def generate_single_answer(
         context: The context to condition the generation on.
         question: The question to condition the generation on.
         lang: Language passed to the prompt formatter.
-        max_new_tokens (int, optional): The maximum number of new tokens to generate.
+        max_new_tokens (optional): The maximum number of new tokens to generate.
             Defaults to 32768.
         temperature (float, optional): The temperature to use for generation.
             Defaults to None (use the model's default temperature).
