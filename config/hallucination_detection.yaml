@@ -3,15 +3,14 @@ defaults:
   - _self_
 
 base_dataset:
-  id: alexandrainst/multi-wiki-qa:da
+  id: multi-wiki-qa
+  organisation: alexandrainst
   split: train
   context_key: context
   question_key: question
   answer_key: answers
   squad_format: true
 
-model: gpt-4.1-mini
-temperature: 1.0
 
 beta_distribution:
   mean: 0.2
@@ -30,9 +29,28 @@ training:
   epochs: 5
   learning_rate: 1e-5
   weight_decay: 0.01
-  language: da
   push_to_hub: True
+  max_length: 8192
 
 models:
-  target_model_name: ettin-encoder-17m-multi-wiki-qa-da
-  pretrained_model_name: jhu-clsp/ettin-encoder-17m
+  hallu_detect_model: mmBERT-small
+  pretrained_model: jhu-clsp/mmBERT-small
+  eval_model: Qwen/Qwen3-0.6B
+  hallu_gen_model: gpt-4.1-mini
+
+language: da
+
+selfcheckgpt:
+  num_samples: 10
+  sampling_temperature: 1.0
+  reference_temperature: 0.0
+  reference_do_sample: false
+  prompt_model: gpt-4o-mini
+  output_dir: data/final/selfcheckgpt
+  max_retries: 3
+  request_timeout: null
+  context_char_limit: null
+
+generation:
+  max_examples: 1000
+  max_new_tokens: 32768

@@ -22,6 +22,7 @@ def load_qa_data(
     answer_key: str,
     squad_format: bool,
     testing: bool,
+    max_examples: int = -1,
 ) -> tuple[list[list[str]], list[str], list[str]]:
     """Load the base dataset.
 
@@ -40,6 +41,8 @@ def load_qa_data(
             Whether the answers are in SQuAD format.
         testing:
             If True, only load a small subset of the data for testing purposes.
+        max_examples:
+            Maximum number of data samples. If -1, it will use all samples.
 
     Returns:
         A tuple of (contexts, questions, answers).
@@ -47,7 +50,13 @@ def load_qa_data(
     logger.info(f"Loading base dataset {base_dataset_id!r}...")
     dataset_id = base_dataset_id.split(":")[0]
     subset = base_dataset_id.split(":")[1] if ":" in base_dataset_id else None
-    ds = load_dataset(path=dataset_id, name=subset, split=split)
+
+    ds = load_dataset(path=dataset_id, name=subset)
+
+    if len(ds.keys()) > 1:  # Dataset is already split
+        ds = ds[split]
+    else:
+        ds = ds[split].train_test_split(test_size=0.2, seed=42)[split]
 
     logger.info("Preparing dataset...")
     contexts: list[list[str]] = [[ctx] for ctx in ds[context_key]]
@@ -64,6 +73,11 @@ def load_qa_data(
         contexts = contexts[:10]
         questions = questions[:10]
         answers = answers[:10]
+    elif max_examples != -1:
+        logger.info(f"Truncating dataset to {max_examples} examples...")
+        contexts = contexts[:max_examples]
+        questions = questions[:max_examples]
+        answers = answers[:max_examples]
 
     return contexts, questions, answers
 
@@ -113,8 +127,8 @@ def generate_hallucinations_from_qa_data(
     answers: list[str],
     intensities: list[float],
     model: str,
-    temperature: float,
     output_jsonl_path: Path | None,
+    temperature: float | None = None,
 ) -> Dataset:
     """Generate hallucinations from given QA data.
 
@@ -129,11 +143,12 @@ def generate_hallucinations_from_qa_data(
             A list of hallucination intensities for each QA pair.
         model:
             The model name to use for hallucination generation.
-        temperature:
-            The temperature to use for the model during generation.
         output_jsonl_path:
             The path to save the generated dataset in JSONL format, or None to skip
             saving.
+        temperature:
+            The temperature to use for the model during generation. If None, the
+            default temperature is used. Defaults to None.
 
     Returns:
         A Dataset containing both original and hallucinated QA pairs.
@@ -166,9 +181,12 @@ def generate_hallucinations_from_qa_data(
             )
         except Exception as e:
             logger.error(f"Error during generation: {e}. Skipping...")
-            continue
 
-        hallucinated_labels = get_hallucinated_labels(result)
+        hallucinated_labels = get_hallucinated_labels(hallucinated_dict=result)
+
+        # Skip samples where labels cannot be reliably determined
+        if hallucinated_labels is None:
+            continue
 
         # Save the record
         record = dict(
@@ -237,7 +255,7 @@ def generate_hash(context: list[str], question: str, answer: str) -> str:
     return hashlib.md5((context[0] + question + answer).encode("utf-8")).hexdigest()
 
 
-def get_hallucinated_labels(hallucinated_dict: dict) -> list[dict]:
+def get_hallucinated_labels(hallucinated_dict: dict) -> list[dict] | None:
     """Get the hallucinated labels from the generation result.
 
     Args:
@@ -245,17 +263,23 @@ def get_hallucinated_labels(hallucinated_dict: dict) -> list[dict]:
             The dictionary from the hallucination generator.
 
     Returns:
-        A list of dictionaries with start, end, and label for each hallucinated part.
+        A list of dictionaries with start, end, and label for each hallucinated part,
+        or None if the labels cannot be reliably determined.
     """
     hallucinated_labels = []
     for part in hallucinated_dict["hallucinated_parts"]:
-        if hallucinated_dict["hallucinated_answer"].count(part) > 1:
-            raise ValueError(
-                f"The part {part!r} appears multiple times in the hallucinated answer "
-                f"{hallucinated_dict['hallucinated_answer']!r}, so could not correctly "
-                "mark the spans."
+        answer = hallucinated_dict["hallucinated_answer"]
+        count = answer.count(part)
+
+        if count > 1:
+            # Cannot reliably label - discard this sample
+            logger.warning(
+                f"Discarding sample - hallucinated part {part!r} appears {count} times "
+                f"in answer, cannot determine which occurrence is hallucinated."
             )
-        start = hallucinated_dict["hallucinated_answer"].find(part)
+            return None
+
+        start = answer.find(part)
         if start != -1:
             hallucinated_labels.append(
                 {"start": start, "end": start + len(part), "label": "hallucinated"}

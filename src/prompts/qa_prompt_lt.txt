@@ -1,0 +1,6 @@
+Trumpai atsakykite į šį klausimą:
+${question}
+Atminkite, kad jūsų atsakymas turi būti griežtai pagrįstas šiais ${num_passages} ištraukomis:
+${context}
+Jei ištraukos neturi reikalingos informacijos atsakyti į klausimą, atsakykite: "Negalima atsakyti remiantis pateiktomis ištraukomis."
+išvestis:

@@ -1,0 +1,6 @@
+Răspundeți pe scurt la următoarea întrebare:
+${question}
+Rețineți că răspunsul dumneavoastră trebuie să fie strict bazat pe următoarele ${num_passages} pasaje:
+${context}
+În cazul în care pasajele nu conțin informațiile necesare pentru a răspunde la întrebare, vă rugăm să răspundeți cu: "Nu se poate răspunde pe baza pasajelor date."
+ieșire:

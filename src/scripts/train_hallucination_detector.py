@@ -41,27 +41,26 @@ def main(config: DictConfig) -> None:
         config:
             The Hydra config for your project.
     """
-    target_dataset_name = (
-        f"{config.base_dataset.id.split('/')[-1].replace(':', '-')}-hallucinated"
-    )
+    target_dataset_name = f"{config.base_dataset.id}-synthetic-hallucinations"
 
     # Load from hub
-    dataset = load_dataset(f"{config.hub_organisation}/{target_dataset_name}")
+    dataset = load_dataset(
+        f"{config.hub_organisation}/{target_dataset_name}", name=config.language
+    )
     train_test_split = dataset["train"].train_test_split(test_size=0.2, seed=42)
 
     # Process dataset to ragtruth format
     train_dataset = format_dataset_to_ragtruth(
-        train_test_split["train"], language=config.training.language, split="train"
+        train_test_split["train"], language=config.language, split="train"
     )
     test_dataset = format_dataset_to_ragtruth(
-        train_test_split["test"], language=config.training.language, split="test"
+        train_test_split["test"], language=config.language, split="test"
     )
 
     # Create tokenizer and data collator
     tokenizer = AutoTokenizer.from_pretrained(
-        config.models.pretrained_model_name,
-        trust_remote_code=True,
-        use_safetensors=True,
+        config.models.pretrained_model,
+        trust_remote_code=True,  # , use_safetensors=True
     )
     data_collator = DataCollatorForTokenClassification(
         tokenizer=tokenizer, label_pad_token_id=-100
@@ -69,10 +68,14 @@ def main(config: DictConfig) -> None:
 
     # Create lettucedetect datasets
     train_hallu_dataset = HallucinationDataset(
-        generate_lettucedetect_hallucination_samples(train_dataset), tokenizer
+        generate_lettucedetect_hallucination_samples(train_dataset),
+        tokenizer,
+        max_length=config.training.max_length,
     )
     test_hallu_dataset = HallucinationDataset(
-        generate_lettucedetect_hallucination_samples(test_dataset), tokenizer
+        generate_lettucedetect_hallucination_samples(test_dataset),
+        tokenizer,
+        max_length=config.training.max_length,
     )
 
     # Create data loaders
@@ -90,7 +93,10 @@ def main(config: DictConfig) -> None:
     )
 
     # Check if model already exists
-    model_save_path = f"{config.training.output_dir}/{config.models.target_model_name}"
+    model_save_path = (
+        f"{config.training.output_dir}/"
+        f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}"
+    )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if os.path.exists(model_save_path) and os.path.isdir(model_save_path):
         # Load existing model
@@ -106,10 +112,7 @@ def main(config: DictConfig) -> None:
 
     else:
         model = AutoModelForTokenClassification.from_pretrained(
-            config.models.pretrained_model_name,
-            num_labels=2,
-            trust_remote_code=True,
-            use_safetensors=True,
+            config.models.pretrained_model, num_labels=2, trust_remote_code=True
         )
 
         trainer = Trainer(
@@ -119,21 +122,19 @@ def main(config: DictConfig) -> None:
             test_loader=test_loader,
             epochs=config.training.epochs,
             learning_rate=config.training.learning_rate,
-            save_path=f"{config.training.output_dir}/{config.models.target_model_name}",
+            save_path=model_save_path,
         )
 
         logging.info("Starting training...")
         trainer.train()
 
         if config.training.push_to_hub:
-            model.push_to_hub(
-                repo_id=f"{config.hub_organisation}/{config.models.target_model_name}",
-                private=config.private,
+            hub_repo_id = (
+                f"{config.hub_organisation}/"
+                f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}"
             )
-            tokenizer.push_to_hub(
-                repo_id=f"{config.hub_organisation}/{config.models.target_model_name}",
-                private=config.private,
-            )
+            model.push_to_hub(repo_id=hub_repo_id, private=config.private)
+            tokenizer.push_to_hub(repo_id=hub_repo_id, private=config.private)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,6 @@
+Svara stuttliga á fylgjandi spurning:
+${question}
+Hav í huga, at svarið títt skal vera strangt grundað á fylgjandi ${num_passages} greinir:
+${context}
+Um greinarnar ikki innihalda neyðugu upplýsingarnar til at svara spurningini, svara vinarliga við: "Kann ikki svara grundað á givnu greinunum."
+úrslit:
