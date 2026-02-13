@@ -55,8 +55,13 @@ def load_qa_data(
 
     if len(ds.keys()) > 1:  # Dataset is already split
         ds = ds[split]
+    elif "train" in ds:
+        ds = ds["train"].train_test_split(test_size=0.2, seed=42)[split]
     else:
-        ds = ds[split].train_test_split(test_size=0.2, seed=42)[split]
+        raise Exception(
+            "Dataset can not be split into test and train. Please check if"
+            "'train' is a subset of the dataset."
+        )
 
     logger.info("Preparing dataset...")
     contexts: list[list[str]] = [[ctx] for ctx in ds[context_key]]
