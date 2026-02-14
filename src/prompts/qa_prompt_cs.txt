@@ -1,6 +1,5 @@
-Stručně odpovězte na následující otázku:
-${question}
-Mějte na paměti, že vaše odpověď by měla být striktně založena na následujících ${num_passages} pasážích:
-${context}
-V případě, že pasáže neobsahují potřebné informace k zodpovězení otázky, odpovězte prosím: "Nelze odpovědět na základě daných pasáží."
-výstup:
+Text: ${text}
+
+Odpovězte na následující otázku k výše uvedenému textu maximálně 3 slovy.
+
+Otázka: ${question}

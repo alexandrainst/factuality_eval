@@ -1,6 +1,5 @@
-Vastaa lyhyesti seuraavaan kysymykseen:
-${question}
-Muista, että vastauksesi tulee perustua tiukasti seuraaviin ${num_passages} kappaleeseen:
-${context}
-Jos kappaleet eivät sisällä tarvittavia tietoja kysymykseen vastaamiseksi, vastaa: "Ei voida vastata annettujen kappaleiden perusteella."
-tuloste:
+Teksti: ${text}
+
+Vastaa seuraavaan kysymykseen yllä olevasta tekstistä enintään 3 sanalla.
+
+Kysymys: ${question}

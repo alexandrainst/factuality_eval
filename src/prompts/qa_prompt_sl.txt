@@ -1,6 +1,5 @@
-Na kratko odgovorite na naslednje vprašanje:
-${question}
-Upoštevajte, da mora vaš odgovor temeljiti izključno na naslednjih ${num_passages} odlomkih:
-${context}
-Če odlomki ne vsebujejo potrebnih informacij za odgovor na vprašanje, prosimo odgovorite z: "Ni mogoče odgovoriti na podlagi danih odlomkov."
-izhod:
+Besedilo: ${text}
+
+Odgovorite na naslednje vprašanje o zgornjem besedilu v največ 3 besedah.
+
+Vprašanje: ${question}

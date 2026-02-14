@@ -1,6 +1,5 @@
-Svaraðu stuttlega eftirfarandi spurningu:
-${question}
-Hafðu í huga að svarið þitt ætti að vera stranglega byggt á eftirfarandi ${num_passages} efnisgreinum:
-${context}
-Ef efnisgreinarnar innihalda ekki nauðsynlegar upplýsingar til að svara spurningunni, vinsamlegast svaraðu með: "Get ekki svarað út frá gefnum efnisgreinum."
-úttak:
+Texti: ${text}
+
+Svaraðu eftirfarandi spurningu um textann að hámarki í 3 orðum.
+
+Spurning: ${question}

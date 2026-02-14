@@ -1,6 +1,5 @@
-Röviden válaszolj az alábbi kérdésre:
-${question}
-Vedd figyelembe, hogy a válaszod kizárólag az alábbi ${num_passages} szövegrészletre támaszkodjon:
-${context}
-Ha a szövegrészletek nem tartalmazzák a kérdés megválaszolásához szükséges információt, válaszolj így: "Nem tudok válaszolni a megadott szövegrészletek alapján."
-output:
+Szöveg: ${text}
+
+Válaszoljon az alábbi kérdésre a fenti szöveg alapján legfeljebb 3 szóban.
+
+Kérdés: ${question}

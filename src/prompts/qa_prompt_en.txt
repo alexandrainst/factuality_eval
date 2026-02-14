@@ -1,6 +1,5 @@
-Briefly answer the following question:
-${question}
-Bear in mind that your response should be strictly based on the following ${num_passages} passages:
-${context}
-In case the passages do not contain the necessary information to answer the question, please reply with: "Unable to answer based on given passages."
-output:
+Text: ${text}
+
+Answer the following question about the above text in at most 3 words.
+
+Question: ${question}

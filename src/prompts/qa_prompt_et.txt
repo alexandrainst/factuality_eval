@@ -1,6 +1,5 @@
-Vastake lühidalt järgmisele küsimusele:
-${question}
-Pidage meeles, et teie vastus peaks põhinema rangelt järgmistel ${num_passages} lõigul:
-${context}
-Kui lõigud ei sisalda küsimusele vastamiseks vajalikku teavet, vastake palun: "Ei saa vastata antud lõikude põhjal."
-väljund:
+Tekst: ${text}
+
+Vasta järgmisele küsimusele ülevaltoodud teksti kohta maksimaalselt 3 sõnaga.
+
+Küsimus: ${question}

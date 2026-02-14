@@ -39,38 +39,6 @@ Lang = t.Literal[
     "uk",
 ]
 
-LANG_TO_PASSAGE = {
-    "bs": "odlomak",  # Bosnian
-    "bg": "пасаж",  # Bulgarian
-    "ca": "passatge",  # Catalan
-    "hr": "odlomak",  # Croatian
-    "cs": "pasáž",  # Czech
-    "da": "afsnit",  # Danish
-    "nl": "passage",  # Dutch
-    "en": "passage",  # English
-    "et": "lõik",  # Estonian
-    "fo": "grein",  # Faroese
-    "fi": "kappale",  # Finnish
-    "fr": "passage",  # French
-    "de": "Passage",  # German
-    "el": "απόσπασμα",  # Greek
-    "hu": "szövegrészlet",  # Hungarian
-    "is": "efnisgrein",  # Icelandic
-    "it": "brano",  # Italian
-    "lv": "posms",  # Latvian
-    "lt": "ištrauka",  # Lithuanian
-    "no": "avsnitt",  # Norwegian
-    "pl": "fragment",  # Polish
-    "pt": "passagem",  # Portuguese
-    "ro": "pasaj",  # Romanian
-    "sr": "одломак",  # Serbian
-    "sk": "pasáž",  # Slovak
-    "sl": "odlomek",  # Slovenian
-    "es": "pasaje",  # Spanish
-    "sv": "stycke",  # Swedish
-    "uk": "уривок",  # Ukrainian
-}
-
 LANG_TO_FULL_NAME = {
     "bs": "Bosnian",
     "bg": "Bulgarian",
@@ -218,19 +186,14 @@ class PromptUtils:
         Returns:
             Formatted prompt.
         """
-        passage_word = LANG_TO_PASSAGE[lang]
-        ctx_block = "\n".join(
-            f"{passage_word} {i + 1}: {p}" for i, p in enumerate(context)
-        )
+        ctx_block = "\n".join(context)
 
         if question is None:
             tmpl = PromptUtils.load_prompt(f"summary_prompt_{lang.lower()}.txt")
             return tmpl.substitute(text=ctx_block)
 
         tmpl = PromptUtils.load_prompt(f"qa_prompt_{lang.lower()}.txt")
-        return tmpl.substitute(
-            question=question, num_passages=len(context), context=ctx_block
-        )
+        return tmpl.substitute(question=question, text=ctx_block)
 
     @staticmethod
     def get_full_language_name(lang: Lang) -> str:

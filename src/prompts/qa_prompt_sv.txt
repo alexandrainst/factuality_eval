@@ -1,6 +1,5 @@
-Svara kortfattat på följande fråga:
-${question}
-Tänk på att ditt svar ska vara strikt baserat på följande ${num_passages} stycken:
-${context}
-Om styckena inte innehåller nödvändig information för att besvara frågan, vänligen svara med: "Kan inte svara baserat på de givna styckena."
-utdata:
+Text: ${text}
+
+Besvara följande fråga om texten ovan med högst 3 ord.
+
+Fråga: ${question}

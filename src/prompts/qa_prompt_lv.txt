@@ -1,6 +1,5 @@
-Īsi atbildiet uz šādu jautājumu:
-${question}
-Ņemiet vērā, ka jūsu atbildei jābūt strikti balstītai uz šādiem ${num_passages} fragmentiem:
-${context}
-Ja fragmenti nesatur nepieciešamo informāciju, lai atbildētu uz jautājumu, lūdzu, atbildiet ar: "Nevar atbildēt, pamatojoties uz dotajiem fragmentiem."
-izvade:
+Teksts: ${text}
+
+Atbildiet uz šo jautājumu par iepriekš minēto tekstu ar maksimāli 3 vārdiem.
+
+Jautājums: ${question}

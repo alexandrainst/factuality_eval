@@ -1,6 +1,5 @@
-Beantwoord kort de volgende vraag:
-${question}
-Houd er rekening mee dat je antwoord strikt gebaseerd moet zijn op de volgende ${num_passages} passages:
-${context}
-Als de passages niet de nodige informatie bevatten om de vraag te beantwoorden, antwoord dan met: "Kan niet beantwoorden op basis van de gegeven passages."
-uitvoer:
+Tekst: ${text}
+
+Beantwoord de volgende vraag over de bovenstaande tekst in maximaal 3 woorden.
+
+Vraag: ${question}
