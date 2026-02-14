@@ -61,9 +61,11 @@ def main(config: DictConfig) -> None:
         output_jsonl_path=Path("data", "final", f"{target_dataset_name}.jsonl"),
     )
 
+    target_dataset_name = f"{config.base_dataset.id}-synthetic-hallucinations"
+
     hallucination_detector_hugging_face_path = (
         f"{config.hub_organisation}/"
-        f"{config.models.hallu_detect_model}-{config.base_dataset.id}-{config.language}"
+        f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}"
     )
 
     hallucinations = detect_hallucinations(
