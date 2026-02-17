@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Iterable, cast
@@ -23,6 +24,18 @@ from factuality_eval.dataset_generation import generate_hash
 from factuality_eval.prompt_utils import Lang, PromptUtils
 
 logger = logging.getLogger(__name__)
+
+# Pattern to strip markdown bold/italic markers from model output
+_MD_MARKERS_RE = re.compile(r"(\*{1,3}|_{1,3})(.+?)\1")
+
+
+def _strip_markdown(text: str) -> str:
+    """Remove markdown bold/italic markers from text.
+
+    Replaces ``**bold**``, ``*italic*``, ``***both***`` (and underscore
+    equivalents) with just the inner text.
+    """
+    return _MD_MARKERS_RE.sub(r"\2", text)
 
 
 def generate_single_answer(
@@ -53,10 +66,11 @@ def generate_single_answer(
     prompt = PromptUtils.format_context(list(context), question, lang=lang)
     messages = [{"role": "user", "content": prompt}]
     text = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=False, enable_thinking=False
+        messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
     )
 
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+    input_length = model_inputs["input_ids"].shape[-1]
 
     # Only include temperature in generation parameters if it's specified
     generation_kwargs: dict[str, int | float] = {"max_new_tokens": max_new_tokens}
@@ -66,17 +80,19 @@ def generate_single_answer(
     generated_ids = model.generate(  # type: ignore[operator]
         **model_inputs, **generation_kwargs
     )
-    output_ids: list[int] = cast(torch.Tensor, generated_ids)[0].tolist()
 
-    content = tokenizer.decode(output_ids, skip_special_tokens=False)
+    # Only decode newly generated tokens, excluding the input prompt
+    output_ids = cast(torch.Tensor, generated_ids)[0][input_length:].tolist()
+
+    content = tokenizer.decode(output_ids, skip_special_tokens=True)
 
     # Clear generated content of special tokens
-    if tokenizer.bos_token is not None:
-        content = content.split(tokenizer.bos_token)[-1]
     if "</think>" in content:
         content = content.split("</think>")[-1]
-    content.replace(tokenizer.eos_token, "")
-    content.replace("\n", "")
+    content = content.replace(tokenizer.eos_token, "")
+    for special_token in tokenizer.all_special_tokens:
+        content = content.replace(special_token, "")
+    content = content.strip()
 
     return content
 
@@ -202,6 +218,9 @@ def generate_answers_from_qa_data(
         except Exception as e:
             logger.error(f"Error during generation: {e}. Skipping...")
             continue
+
+        # Strip markdown bold/italic markers that models sometimes add
+        answer = _strip_markdown(answer)
 
         record = dict(hash=hash_, context=context, question=question, answer=answer)
         records.append(record)

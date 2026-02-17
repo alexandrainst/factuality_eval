@@ -30,7 +30,7 @@ training:
   learning_rate: 1e-5
   weight_decay: 0.01
   push_to_hub: True
-  max_length: 8192
+  max_length: 4096
 
 models:
   hallu_detect_model: mmBERT-small
@@ -53,4 +53,4 @@ selfcheckgpt:
 
 generation:
   max_examples: 1000
-  max_new_tokens: 32768
+  max_new_tokens: 256
