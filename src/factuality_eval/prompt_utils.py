@@ -71,70 +71,6 @@ LANG_TO_FULL_NAME = {
     "uk": "Ukrainian",
 }
 
-YES_WORDS = {
-    "bs": "da",
-    "bg": "да",
-    "ca": "sí",
-    "hr": "da",
-    "cs": "ano",
-    "da": "ja",
-    "nl": "ja",
-    "en": "yes",
-    "et": "jah",
-    "fo": "ja",
-    "fi": "kyllä",
-    "fr": "oui",
-    "de": "ja",
-    "el": "ναι",
-    "hu": "igen",
-    "is": "já",
-    "it": "sì",
-    "lv": "jā",
-    "lt": "taip",
-    "no": "ja",
-    "pl": "tak",
-    "pt": "sim",
-    "ro": "da",
-    "sr": "да",
-    "sk": "áno",
-    "sl": "da",
-    "es": "sí",
-    "sv": "ja",
-    "uk": "так",
-}
-
-NO_WORDS = {
-    "bs": "ne",
-    "bg": "не",
-    "ca": "no",
-    "hr": "ne",
-    "cs": "ne",
-    "da": "nej",
-    "nl": "nee",
-    "en": "no",
-    "et": "ei",
-    "fo": "nei",
-    "fi": "ei",
-    "fr": "non",
-    "de": "nein",
-    "el": "όχι",
-    "hu": "nem",
-    "is": "nei",
-    "it": "no",
-    "lv": "nē",
-    "lt": "ne",
-    "no": "nei",
-    "pl": "nie",
-    "pt": "não",
-    "ro": "nu",
-    "sr": "не",
-    "sk": "nie",
-    "sl": "ne",
-    "es": "no",
-    "sv": "nej",
-    "uk": "ні",
-}
-
 PROMPT_DIR = Path(__file__).parent.parent / "prompts"
 
 
@@ -160,16 +96,6 @@ class PromptUtils:
         if not path.exists():
             raise FileNotFoundError(f"Prompt file not found: {path}")
         return Template(path.read_text(encoding="utf-8"))
-
-    @staticmethod
-    def load_selfcheckgpt_prompt(context: str, sentence: str, lang: Lang) -> str:
-        """Load the SelfCheckGPT prompt template.
-
-        Returns:
-            Template object for the SelfCheckGPT prompt.
-        """
-        tmpl = PromptUtils.load_prompt(f"selfcheckgpt_prompt_{lang.lower()}.txt")
-        return tmpl.substitute(context=context, sentence=sentence)
 
     @staticmethod
     def format_context(context: list[str], question: str | None, lang: Lang) -> str:
