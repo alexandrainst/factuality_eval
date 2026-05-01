@@ -58,8 +58,8 @@ def load_qa_data(
     elif "train" in ds:
         ds = ds["train"].train_test_split(test_size=0.2, seed=42)[split]
     else:
-        raise Exception(
-            "Dataset can not be split into test and train. Please check if"
+        raise ValueError(
+            "Dataset cannot be split into test and train. Please check if "
             "'train' is a subset of the dataset."
         )
 
