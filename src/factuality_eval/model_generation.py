@@ -89,7 +89,9 @@ def generate_single_answer(
     # Clear generated content of special tokens
     if "</think>" in content:
         content = content.split("</think>")[-1]
-    content = content.replace(tokenizer.eos_token, "")
+    eos_token = tokenizer.eos_token
+    if eos_token:
+        content = content.replace(eos_token, "")
     for special_token in tokenizer.all_special_tokens:
         content = content.replace(special_token, "")
     content = content.strip()
