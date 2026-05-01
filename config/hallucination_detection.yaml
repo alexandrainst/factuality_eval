@@ -11,7 +11,6 @@ base_dataset:
   answer_key: answers
   squad_format: true
 
-
 beta_distribution:
   mean: 0.2
   std: 0.15
@@ -29,7 +28,7 @@ training:
   epochs: 5
   learning_rate: 1e-5
   weight_decay: 0.01
-  push_to_hub: True
+  push_to_hub: False
   max_length: 4096
 
 models:
