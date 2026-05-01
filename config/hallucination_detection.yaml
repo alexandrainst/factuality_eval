@@ -11,7 +11,6 @@ base_dataset:
   answer_key: answers
   squad_format: true
 
-
 beta_distribution:
   mean: 0.2
   std: 0.15
@@ -29,8 +28,8 @@ training:
   epochs: 5
   learning_rate: 1e-5
   weight_decay: 0.01
-  push_to_hub: True
-  max_length: 8192
+  push_to_hub: False
+  max_length: 4096
 
 models:
   hallu_detect_model: mmBERT-small
@@ -40,17 +39,6 @@ models:
 
 language: da
 
-selfcheckgpt:
-  num_samples: 10
-  sampling_temperature: 1.0
-  reference_temperature: 0.0
-  reference_do_sample: false
-  prompt_model: gpt-4o-mini
-  output_dir: data/final/selfcheckgpt
-  max_retries: 3
-  request_timeout: null
-  context_char_limit: null
-
 generation:
   max_examples: 1000
-  max_new_tokens: 32768
+  max_new_tokens: 256

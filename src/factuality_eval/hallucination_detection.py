@@ -31,13 +31,9 @@ def detect_hallucinations(
         dataset["context"], dataset["question"], dataset["answer"]
     ):
         # Use the detector to predict if the answer is hallucinated
-        try:
-            predict_answer = detector.predict(
-                context=context, question=question, answer=answer
-            )
-        except Exception as e:
-            logger.error(f"Error during hallucination detection: {e}. Skipping...")
-            continue
+        predict_answer = detector.predict(
+            context=context, question=question, answer=answer
+        )
         predict_answers.append(predict_answer)
 
     if "hallucinated_parts" in dataset.column_names:
