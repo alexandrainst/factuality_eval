@@ -1,5 +1,5 @@
 Testo: ${text}
 
-Rispondi alla seguente domanda sul in un massimo di 3 parole.
+Rispondi alla seguente domanda sul testo in un massimo di 3 parole.
 
 Domanda: ${question}
