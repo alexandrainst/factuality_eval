@@ -1,3 +1,0 @@
-Kontext: ${context}\n
-Satz: ${sentence}\n
-Wird der Satz durch den obigen Kontext gestützt? Antwort: Ja oder Nein:
