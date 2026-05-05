@@ -1,3 +1,5 @@
+"""Translate hallucination datasets between languages while preserving span labels."""
+
 import argparse
 import json
 import logging
@@ -10,16 +12,15 @@ from typing import Any
 
 import requests
 import tqdm
+from lettucedetect.datasets.hallucination_dataset import (
+    HallucinationData,
+    HallucinationSample,
+)
 from tenacity import (
     retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-)
-
-from lettucedetect.datasets.hallucination_dataset import (
-    HallucinationData,
-    HallucinationSample,
 )
 
 TRANSLATION_ANSWER = """
@@ -122,7 +123,7 @@ def get_openai_client() -> dict[str, Any]:
     wait=wait_exponential(multiplier=1, min=2, max=60),
     reraise=True,
     before_sleep=lambda retry_state: logger.warning(
-        f"API call failed. Retrying in {retry_state.next_action.sleep} seconds... "
+        f"API call failed. Retrying in {retry_state.next_action.sleep if retry_state.next_action else 0} seconds... "
         f"(Attempt {retry_state.attempt_number}/5)"
     ),
 )
@@ -396,7 +397,7 @@ def load_check_existing_data(output_file: Path) -> HallucinationData:
         return HallucinationData(samples=[])
 
 
-def translate_sample_wrapper(args):
+def translate_sample_wrapper(args: tuple) -> HallucinationSample | None:
     """Wrapper function for translate_sample to use with concurrent.futures.
 
     :param args: Tuple of arguments for translate_sample
@@ -453,7 +454,7 @@ def save_progress(
     dataset: str,
     target_lang: str,
     output_dir: Path,
-):
+) -> None:
     """Save progress to file with backup handling.
 
     :param translated_data: Data to save
@@ -489,7 +490,7 @@ def main(
     max_workers: int = 5,
     resume: bool = True,
     test: bool = False,
-):
+) -> None:
     """Translates the preprocessed data using parallel processing.
 
     :param input_dir: Path to the input directory

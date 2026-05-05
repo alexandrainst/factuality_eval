@@ -2,7 +2,10 @@ import argparse
 import json
 from pathlib import Path
 
-from lettucedetect.datasets.hallucination_dataset import HallucinationData, HallucinationSample
+from lettucedetect.datasets.hallucination_dataset import (
+    HallucinationData,
+    HallucinationSample,
+)
 
 
 def load_data(input_dir: Path) -> tuple[list[dict], list[dict]]:
@@ -11,10 +14,12 @@ def load_data(input_dir: Path) -> tuple[list[dict], list[dict]]:
     :param input_dir: Path to the input directory.
     """
     responses = [
-        json.loads(line) for line in (input_dir / "response.jsonl").read_text().splitlines()
+        json.loads(line)
+        for line in (input_dir / "response.jsonl").read_text().splitlines()
     ]
     sources = [
-        json.loads(line) for line in (input_dir / "source_info.jsonl").read_text().splitlines()
+        json.loads(line)
+        for line in (input_dir / "source_info.jsonl").read_text().splitlines()
     ]
 
     return responses, sources
@@ -37,17 +42,15 @@ def create_sample(response: dict, source: dict) -> HallucinationSample:
         start_char = label["start"]
         end_char = label["end"]
         labels.append(
-            {
-                "start": start_char,
-                "end": end_char,
-                "label": label["label_type"],
-            }
+            {"start": start_char, "end": end_char, "label": label["label_type"]}
         )
 
-    return HallucinationSample(prompt, answer, labels, split, task_type, "ragtruth", "en")
+    return HallucinationSample(
+        prompt, answer, labels, split, task_type, "ragtruth", "en"
+    )
 
 
-def main(input_dir: Path, output_dir: Path):
+def main(input_dir: Path, output_dir: Path) -> None:
     """Preprocess the RAG truth data.
 
     :param input_dir: Path to the input directory.
