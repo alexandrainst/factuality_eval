@@ -22,6 +22,8 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "openai>=1.4.0",
     "tiktoken>=0.11.0",
+    "debugpy>=1.8.20",
+    "tenacity>=9.1.4",
 ]
 
 [project.urls]
