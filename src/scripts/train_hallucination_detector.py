@@ -150,7 +150,9 @@ def main(config: DictConfig) -> None:
         dataset = load_dataset(
             f"{config.hub_organisation}/{target_dataset_name}", name=config.language
         )
-    train_test_split = dataset["train"].train_test_split(test_size=0.2, seed=42)
+    train_test_split = dataset["train"].train_test_split(
+        test_size=0.2, seed=42, shuffle=False
+    )
 
     # Process synthetic dataset to ragtruth format
     synthetic_train = format_dataset_to_ragtruth(
