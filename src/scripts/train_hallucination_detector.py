@@ -7,6 +7,7 @@ Usage:
 import json
 import logging
 import os
+from pathlib import Path
 
 import hydra
 import torch
@@ -25,7 +26,10 @@ from transformers import (
 )
 
 from factuality_eval.dataset_generation import (
+    generate_hallucinations_from_qa_data,
     generate_lettucedetect_hallucination_samples,
+    load_qa_data,
+    sample_hallucination_intensities,
 )
 from factuality_eval.train import format_dataset_to_ragtruth
 
