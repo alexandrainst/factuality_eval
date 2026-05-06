@@ -152,14 +152,8 @@ class PromptUtils:
             f"{passage_word} {i + 1}: {p}" for i, p in enumerate(context)
         )
 
-        if question is None:
-            tmpl = PromptUtils.load_prompt(f"summary_prompt_{lang.lower()}.txt")
-            return tmpl.substitute(text=ctx_block)
-
         tmpl = PromptUtils.load_prompt(f"qa_prompt_{lang.lower()}.txt")
-        return tmpl.substitute(
-            question=question, num_passages=len(context), context=ctx_block
-        )
+        return tmpl.substitute(question=question, text=ctx_block)
 
     @staticmethod
     def get_full_language_name(lang: Lang) -> str:
