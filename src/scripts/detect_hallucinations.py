@@ -16,6 +16,10 @@ from factuality_eval.hallucination_detection import (
     detect_hallucinations,
     evaluate_predicted_answers,
 )
+from factuality_eval.train import (
+    format_dataset_to_ragtruth,
+    format_dataset_to_ragtruth_without_labels,
+)
 from factuality_eval.model_generation import generate_answers_from_qa_data
 
 load_dotenv()
@@ -67,9 +71,11 @@ def main(config: DictConfig) -> None:
         f"{config.hub_organisation}/"
         f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}"
     )
-
+    rag_truth_dataset = format_dataset_to_ragtruth_without_labels(
+        generated_answers, language=config.language, split="test"
+    )
     hallucinations = detect_hallucinations(
-        generated_answers, model=hallucination_detector_hugging_face_path
+        rag_truth_dataset, model=hallucination_detector_hugging_face_path
     )
 
     evaluate_predicted_answers(hallucinations)

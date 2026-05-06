@@ -34,6 +34,7 @@ Lang = t.Literal[
     "sr",
     "sk",
     "sl",
+    "sq",
     "es",
     "sv",
     "uk",
@@ -98,10 +99,12 @@ LANG_TO_FULL_NAME = {
     "sr": "Serbian",
     "sk": "Slovak",
     "sl": "Slovenian",
+    "sq": "Albanian",
     "es": "Spanish",
     "sv": "Swedish",
     "uk": "Ukrainian",
 }
+
 
 PROMPT_DIR = Path(__file__).parent.parent / "prompts"
 

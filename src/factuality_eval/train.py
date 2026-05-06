@@ -36,6 +36,7 @@ def format_dataset_to_ragtruth(
         "sr",
         "sk",
         "sl",
+        "sq",
         "es",
         "sv",
         "uk",
@@ -68,3 +69,66 @@ def format_dataset_to_ragtruth(
         }
 
     return dataset.map(_format_row, remove_columns=["question", "context"])
+
+
+def format_dataset_to_ragtruth_without_labels(
+    dataset: Dataset,
+    language: t.Literal[
+        "bs",
+        "bg",
+        "ca",
+        "hr",
+        "cs",
+        "da",
+        "nl",
+        "en",
+        "et",
+        "fo",
+        "fi",
+        "fr",
+        "de",
+        "el",
+        "hu",
+        "is",
+        "it",
+        "lv",
+        "lt",
+        "no",
+        "pl",
+        "pt",
+        "ro",
+        "sr",
+        "sk",
+        "sl",
+        "sq",
+        "es",
+        "sv",
+        "uk",
+    ] = "da",
+    split: str = "train",
+) -> Dataset:
+    """Format the dataset to ragtruth format.
+
+    Args:
+        dataset:
+            The dataset to format to ragtruth.
+
+    Returns:
+        The ragtruth formatted dataset.
+    """
+
+    def _format_row(x: dict[str, t.Any]) -> dict[str, t.Any]:
+        return {
+            "prompt": PromptUtils.format_context(
+                x["context"],
+                x["question"],
+                lang=language,  # type: ignore[arg-type]
+            ),
+            "answer": x["answer"],
+            "split": split,
+            "task_type": "qa",
+            "language": language,
+            "dataset": "ragtruth",
+        }
+
+    return dataset.map(_format_row)
