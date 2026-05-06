@@ -87,7 +87,9 @@ def main(config: DictConfig) -> None:
     dataset = load_dataset(
         f"{config.hub_organisation}/{target_dataset_name}", name=config.language
     )
-    test_split = dataset["train"].train_test_split(test_size=0.2, seed=42)["test"]
+    test_split = dataset["train"].train_test_split(
+        test_size=0.2, seed=42, shuffle=False
+    )["test"]
 
     test_ragtruth = format_dataset_to_ragtruth(
         test_split, language=config.language, split="test"

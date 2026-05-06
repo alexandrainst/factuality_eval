@@ -191,6 +191,13 @@ def main(config: DictConfig) -> None:
         train_dataset = synthetic_train
         test_dataset = synthetic_test
 
+    # Shuffle the combined train/test datasets so RAGTruth and synthetic
+    # MultiWikiQA examples are interleaved. This is done *after* the
+    # train/test split so paired clean/hallucinated synthetic rows stay in
+    # the same split, but the per-split ordering becomes random.
+    train_dataset = train_dataset.shuffle(seed=42)
+    test_dataset = test_dataset.shuffle(seed=42)
+
     # ------------------------------------------------------------------
     # 3. Tokenize and train (existing flow, unchanged below)
     # ------------------------------------------------------------------
