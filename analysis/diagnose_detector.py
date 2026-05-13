@@ -14,6 +14,7 @@ import json
 import os
 import re
 from collections import defaultdict
+from typing import Callable
 
 DATA_PATH = "/workspace/data/final/ground_truth_evaluation_dataset.jsonl"
 OUT_MD = "/workspace/analysis/detector_diagnosis.md"
@@ -22,6 +23,7 @@ N_ANNOTATED = 260
 
 
 def load_samples(path: str, n: int) -> list[dict]:
+    """Load up to ``n`` JSONL samples from ``path``."""
     out = []
     with open(path) as f:
         for i, line in enumerate(f):
@@ -32,6 +34,7 @@ def load_samples(path: str, n: int) -> list[dict]:
 
 
 def build_char_mask(s: str, parts: list[str]) -> list[bool]:
+    """Return a per-character mask marking characters in ``s`` covered by ``parts``."""
     mask = [False] * len(s)
     for p in parts:
         if not p:
@@ -46,6 +49,7 @@ def build_char_mask(s: str, parts: list[str]) -> list[bool]:
 
 
 def confusion(tp: int, fp: int, fn: int, tn: int) -> dict:
+    """Compute confusion-matrix-derived metrics from raw counts."""
     total = tp + fp + fn + tn
     prec = tp / (tp + fp) if (tp + fp) else 0.0
     rec = tp / (tp + fn) if (tp + fn) else 0.0
@@ -73,6 +77,7 @@ def confusion(tp: int, fp: int, fn: int, tn: int) -> dict:
 
 
 def is_punct_or_eos(tok: str) -> bool:
+    """Return True if the token is punctuation, whitespace, or ``<eos>``."""
     if tok == "<eos>":
         return True
     s = tok.strip()
@@ -82,10 +87,12 @@ def is_punct_or_eos(tok: str) -> bool:
 
 
 def tokenize_loose(s: str) -> list[str]:
+    """Loosely tokenize ``s`` into lowercase word tokens."""
     return re.findall(r"\w+", s.lower())
 
 
 def question_echo_overlap(answer: str, question: str) -> float:
+    """Return the fraction of answer tokens that also appear in the question."""
     q_toks = set(tokenize_loose(question))
     a_toks = tokenize_loose(answer)
     if not a_toks or not q_toks:
@@ -95,7 +102,7 @@ def question_echo_overlap(answer: str, question: str) -> float:
 
 
 def question_prefix_match_len(answer: str, question: str) -> int:
-    """Return number of leading characters of answer that match question (case-folded)."""
+    """Return number of leading chars of answer that match question (case-folded)."""
     a = answer.lstrip()
     q = question.strip()
     if not a or not q:
@@ -110,13 +117,15 @@ def question_prefix_match_len(answer: str, question: str) -> int:
     return n
 
 
-def context_str(ctx) -> str:
+def context_str(ctx: list[str] | str) -> str:
+    """Join list-of-strings context into a single newline-separated string."""
     if isinstance(ctx, list):
         return "\n".join(ctx)
     return str(ctx)
 
 
 def token_in_context(tok: str, ctx: str) -> bool:
+    """Return True if a non-trivial token surface form appears in ``ctx``."""
     s = tok.strip()
     if len(s) < 3:
         return False
@@ -124,6 +133,7 @@ def token_in_context(tok: str, ctx: str) -> bool:
 
 
 def token_in_question(tok: str, question: str) -> bool:
+    """Return True if a non-trivial token surface form appears in ``question``."""
     s = tok.strip()
     if len(s) < 3:
         return False
@@ -131,6 +141,7 @@ def token_in_question(tok: str, question: str) -> bool:
 
 
 def categorize_token(tok: str, ctx: str, question: str) -> str:
+    """Assign a heuristic category to a token based on its surface form and context."""
     s = tok.strip()
     if not s:
         return "whitespace"
@@ -220,7 +231,8 @@ print(f"Total tokens (non-eos): {len(records)}")
 # --- §1 Diagnostics -------------------------------------------------------
 
 
-def confusion_for(records: list[dict], pred_key="pred") -> dict:
+def confusion_for(records: list[dict], pred_key: str = "pred") -> dict:
+    """Compute confusion metrics across ``records`` using ``pred_key`` as prediction."""
     tp = fp = fn = tn = 0
     for r in records:
         p = r[pred_key]
@@ -237,6 +249,7 @@ def confusion_for(records: list[dict], pred_key="pred") -> dict:
 
 
 def confusion_for_threshold(records: list[dict], thr: float) -> dict:
+    """Compute confusion metrics by thresholding the ``prob`` field at ``thr``."""
     tp = fp = fn = tn = 0
     for r in records:
         p = r["prob"] >= thr
@@ -267,6 +280,7 @@ for r in records:
 
 
 def stats(xs: list[float]) -> dict:
+    """Compute n/mean/median/p10/p90/min/max for a numeric sequence."""
     if not xs:
         return dict(n=0)
     xs_sorted = sorted(xs)
@@ -322,7 +336,10 @@ for cat, d in cat_stats.items():
 
 
 # --- Stratified by sample type -------------------------------------------
-def conf_subset(filter_fn, pred_key="pred"):
+def conf_subset(
+    filter_fn: Callable[[dict], bool], pred_key: str = "pred"
+) -> tuple[int, dict]:
+    """Return (n_tokens, confusion) for the records selected by ``filter_fn``."""
     sub = [r for r in records if filter_fn(r)]
     return len(sub), confusion_for(sub, pred_key=pred_key)
 
@@ -344,15 +361,15 @@ strat["token_in_question"] = conf_subset(lambda r: r["in_question"])
 
 
 def apply_rules(
-    records,
+    records: list[dict],
     *,
-    threshold=None,
-    kill_qecho_prefix=False,
-    kill_token_in_question=False,
-    kill_token_in_context=False,
-    drop_punct=True,
-    smooth_isolated=False,
-):
+    threshold: float | None = None,
+    kill_qecho_prefix: bool = False,
+    kill_token_in_question: bool = False,
+    kill_token_in_context: bool = False,
+    drop_punct: bool = True,
+    smooth_isolated: bool = False,
+) -> dict:
     """Compute new pred per record according to rules. Return new confusion dict."""
     # First pass: assign initial pred
     preds = []
@@ -445,7 +462,9 @@ cheap_wins["10_thr+qecho+inquestion+smooth"] = apply_rules(
 # --- Sample-level metrics (with cheap-win combo applied) -----------------
 
 
-def sample_level_from_records(records: list[dict], rule_fn) -> dict:
+def sample_level_from_records(
+    records: list[dict], rule_fn: Callable[[dict], bool]
+) -> dict:
     """rule_fn(r) -> bool token-level pred. Sample positive if any token positive."""
     by_sample: dict[int, dict[str, bool]] = defaultdict(
         lambda: dict(any_pred=False, gt=False)
@@ -469,8 +488,12 @@ def sample_level_from_records(records: list[dict], rule_fn) -> dict:
     return confusion(tp, fp, fn, tn)
 
 
-def make_rule(threshold=None, kill_qecho=False, kill_inq=False):
-    def rule(r):
+def make_rule(
+    threshold: float | None = None, kill_qecho: bool = False, kill_inq: bool = False
+) -> Callable[[dict], bool]:
+    """Build a token-level prediction rule with optional thresholding and overrides."""
+
+    def rule(r: dict) -> bool:
         if r["category"] in ("punct", "whitespace", "eos"):
             return False
         if kill_qecho and r["sample_qprefix_match"]:
@@ -524,6 +547,7 @@ print(f"Wrote {OUT_JSON}")
 
 
 def fmt_conf(c: dict) -> str:
+    """Format a confusion dict as a single-line summary string."""
     return (
         f"TP={c['tp']:5d} FP={c['fp']:5d} FN={c['fn']:5d} TN={c['tn']:5d} | "
         f"P={c['precision']:.3f} R={c['recall']:.3f} Spec={c['specificity']:.3f} "

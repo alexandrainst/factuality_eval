@@ -4,15 +4,13 @@ import json
 import logging
 from pathlib import Path
 
-from dotenv import load_dotenv
 import hydra
+from dotenv import load_dotenv
 from omegaconf import DictConfig
 from openai import OpenAI
 from tqdm.auto import tqdm
 
-from factuality_eval.dataset_generation import (
-    load_qa_data,
-)
+from factuality_eval.dataset_generation import load_qa_data
 from factuality_eval.model_generation import generate_answers_from_qa_data
 from factuality_eval.prompt_utils import Lang
 
@@ -55,9 +53,7 @@ POSITIVE_RESPONSES: dict[Lang, list[str]] = {
 
 
 @hydra.main(
-    config_path="../../config",
-    config_name="hallucination_detection",
-    version_base=None,
+    config_path="../../config", config_name="hallucination_detection", version_base=None
 )
 def main(config: DictConfig) -> None:
     """Evaluate model answers against ground truth.
@@ -66,11 +62,6 @@ def main(config: DictConfig) -> None:
         config:
             The Hydra config for your project.
     """
-    base_dataset_id = (
-        f"{config.base_dataset.organisation}/{config.base_dataset.id}"
-        f":{config.language}"
-    )
-
     target_dataset_name = (
         f"{config.base_dataset.id}-{config.language}-"
         f"{config.models.eval_model.split('/')[1]}"
@@ -108,9 +99,7 @@ def main(config: DictConfig) -> None:
     wrong = 0
 
     for item, gt_answer in tqdm(
-        zip(generated_answers, answers),
-        desc="Evaluating",
-        total=len(generated_answers),
+        zip(generated_answers, answers), desc="Evaluating", total=len(generated_answers)
     ):
         gen_answer = item["answer"]
 
@@ -122,7 +111,7 @@ def main(config: DictConfig) -> None:
             messages=[{"role": "user", "content": eval_prompt}],
             temperature=0,
         )
-        eval_result = eval_response.choices[0].message.content.strip().lower()
+        eval_result = (eval_response.choices[0].message.content or "").strip().lower()
         print("")
         if any(pos in eval_result for pos in positive_responses):
             correct += 1

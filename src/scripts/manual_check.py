@@ -20,9 +20,7 @@ def _normalize_cell(text: str, max_chars: int) -> str:
 
 
 @hydra.main(
-    config_path="../../config",
-    config_name="hallucination_detection",
-    version_base=None,
+    config_path="../../config", config_name="hallucination_detection", version_base=None
 )
 def main(config: DictConfig) -> None:
     """Create a Markdown report for manual checking."""
@@ -104,9 +102,7 @@ def main(config: DictConfig) -> None:
                 f"{context_cell} |  |  |\n"
             )
         else:
-            line = (
-                f"| {idx} | {question_cell} | {gt_cell} | {gen_cell} |  |  |\n"
-            )
+            line = f"| {idx} | {question_cell} | {gt_cell} | {gen_cell} |  |  |\n"
         lines.append(line)
 
     output_path.write_text("".join(lines), encoding="utf-8")
