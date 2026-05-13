@@ -107,12 +107,6 @@ ignore = [
 "src/scripts/main.py" = [
     "I",
 ]
-"analysis/*" = [
-    "E501",
-]
-"src/scripts/ground_truth.py" = [
-    "E501",
-]
 "src/scripts/translate.py" = [
     "E501",
 ]

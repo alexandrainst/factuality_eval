@@ -45,15 +45,6 @@ generation:
   max_examples: 1000
   max_new_tokens: 256
 
-manual_check:
-  input_path: data/final/multi-wiki-qa-da-Qwen3-0.6B.jsonl
-  output_path: data/ground_truth/manual_check_da_Qwen3-0.6B.md
-  format: md
-  max_rows: -1
-  max_chars: 300
-  include_context: false
-  context_chars: 200
-
 ragtruth:
   path: data/processed/ragtruth_da/ragtruth_data_da.json
   enable: true

@@ -115,10 +115,10 @@ Generate a JSONL dataset containing generated answers and hallucinated token spa
 uv run src/scripts/generate_hallucination_dataset.py language=da models.eval_model=Qwen/Qwen3-0.6B
 ```
 
-Evaluate generated answers against ground-truth answers with an LLM grader:
+Evaluate a trained hallucination detector against token-level ground-truth labels:
 
 ```bash
-uv run src/scripts/ground_truth.py language=da models.eval_model=Qwen/Qwen3-0.6B
+uv run src/scripts/evaluate_ground_truth.py language=da
 ```
 
 ## Data and Outputs
@@ -127,7 +127,6 @@ Generated files are written under `data/` when the relevant workflow is run. Com
 outputs include:
 
 - `data/final/*`: generated QA answers and hallucination-labelled JSONL files.
-- `data/ground_truth/*`: ground-truth evaluation summaries.
 - `models/*`: locally trained hallucination detector checkpoints.
 - Hydra run directories and logs for script executions.
 
