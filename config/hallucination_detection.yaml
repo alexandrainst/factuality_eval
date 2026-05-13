@@ -57,3 +57,6 @@ manual_check:
 ragtruth:
   path: data/processed/ragtruth_da/ragtruth_data_da.json
   enable: true
+
+multiwikiqa:
+  enable: true

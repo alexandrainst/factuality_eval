@@ -25,6 +25,7 @@ dependencies = [
     "debugpy>=1.8.20",
     "tenacity>=9.1.4",
     "timm>=1.0.24",
+    "termcolor>=2.4.0",
 ]
 
 [project.urls]
