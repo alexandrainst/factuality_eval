@@ -37,9 +37,7 @@ load_dotenv()
 logger = logging.getLogger("train_hallucination_detector")
 
 
-def load_ragtruth_translated(
-    path: Path, language: str
-) -> tuple[list, list]:
+def load_ragtruth_translated(path: Path, language: str) -> tuple[list, list]:
     """Load a translated RAGTruth file and split into train/test using RAGTruth's native splits.
 
     The file is expected to be a HallucinationData JSON produced by
@@ -99,7 +97,6 @@ def main(config: DictConfig) -> None:
             The Hydra config for your project.
     """
     target_dataset_name = f"{config.base_dataset.id}-synthetic-hallucinations"
-
 
     # ------------------------------------------------------------------
     # 1. Load / generate synthetic hallucination dataset (existing flow)
@@ -168,7 +165,7 @@ def main(config: DictConfig) -> None:
     # ------------------------------------------------------------------
     # 2. Load translated RAGTruth and combine with synthetic
     # ------------------------------------------------------------------
-    if config.get("ragtruth", None) and config.ragtruth.get("path", None):
+    if config.ragtruth.enable:
         ragtruth_path = Path(config.ragtruth.path)
         ragtruth_train, ragtruth_test = load_ragtruth_translated(
             ragtruth_path, language=config.language
@@ -202,8 +199,7 @@ def main(config: DictConfig) -> None:
     # 3. Tokenize and train (existing flow, unchanged below)
     # ------------------------------------------------------------------
     tokenizer = AutoTokenizer.from_pretrained(
-        config.models.pretrained_model,
-        trust_remote_code=True,
+        config.models.pretrained_model, trust_remote_code=True
     )
     data_collator = DataCollatorForTokenClassification(
         tokenizer=tokenizer, label_pad_token_id=-100
@@ -235,7 +231,11 @@ def main(config: DictConfig) -> None:
 
     # Naming: include "+ragtruth" suffix so combined-vs-synthetic-only models
     # don't overwrite each other in the output dir / hub repo.
-    suffix = "-with-ragtruth" if config.get("ragtruth", None) and config.ragtruth.get("path", None) else ""
+    suffix = (
+        "-with-ragtruth"
+        if config.get("ragtruth", None) and config.ragtruth.get("path", None)
+        else ""
+    )
     model_save_path = (
         f"{config.training.output_dir}/"
         f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}{suffix}"
@@ -281,3 +281,4 @@ def main(config: DictConfig) -> None:
 
 if __name__ == "__main__":
     main()
+

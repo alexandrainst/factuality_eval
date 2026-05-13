@@ -27,7 +27,7 @@ save_dataset_to_file: false
 training:
   output_dir: models
   batch_size: 1
-  epochs: 5
+  epochs: 10
   learning_rate: 1e-5
   weight_decay: 0.01
   push_to_hub: False
@@ -38,7 +38,6 @@ models:
   pretrained_model: jhu-clsp/mmBERT-small
   eval_model: Qwen/Qwen3-0.6B
   hallu_gen_model: gpt-5-mini
-
 
 language: da
 
@@ -57,3 +56,4 @@ manual_check:
 
 ragtruth:
   path: data/processed/ragtruth_da/ragtruth_data_da.json
+  enable: true
