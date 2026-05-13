@@ -3,12 +3,14 @@
 import hashlib
 import json
 import logging
+import threading
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 from datasets import Dataset, load_dataset
-from lettucedetect import HallucinationGenerator, HallucinationSample
+from lettucedetect import HallucinationSample
 from tqdm.auto import tqdm
 
 logger = logging.getLogger(__name__)
@@ -134,6 +136,7 @@ def generate_hallucinations_from_qa_data(
     model: str,
     output_jsonl_path: Path | None,
     temperature: float | None = None,
+    max_workers: int = 8,
 ) -> Dataset:
     """Generate hallucinations from given QA data.
 
@@ -154,11 +157,15 @@ def generate_hallucinations_from_qa_data(
         temperature:
             The temperature to use for the model during generation. If None, the
             default temperature is used. Defaults to None.
+        max_workers:
+            Number of parallel threads to use for generation. Defaults to 8.
 
     Returns:
         A Dataset containing both original and hallucinated QA pairs.
     """
     logger.info("Generating hallucinations...")
+
+    from lettucedetect import HallucinationGenerator
 
     generator = HallucinationGenerator(model=model, temperature=temperature)
     records: list[dict] = list()
@@ -170,14 +177,25 @@ def generate_hallucinations_from_qa_data(
             records = [json.loads(line.strip()) for line in f if line.strip()]
 
     # Extract the list of hashes for quick lookups
-    hashes = {record["hash"] for record in records}
+    hashes: set[str] = {record["hash"] for record in records}
 
-    for context, question, answer, intensity in zip(
-        tqdm(contexts), questions, answers, intensities
-    ):
+    # Build the list of items that still need to be processed
+    items_to_process = [
+        (context, question, answer, intensity)
+        for context, question, answer, intensity in zip(
+            contexts, questions, answers, intensities
+        )
+        if generate_hash(context=context, question=question, answer=answer)
+        not in hashes
+    ]
+
+    file_lock = threading.Lock()
+    records_lock = threading.Lock()
+
+    def _process_one(item: tuple[list[str], str, str, float]) -> dict | None:
+        """Process a single QA pair and return a record or None to skip."""
+        context, question, answer, intensity = item
         hash_ = generate_hash(context=context, question=question, answer=answer)
-        if hash_ in hashes:
-            continue
 
         # Generate hallucinated answer with specified intensity
         try:
@@ -186,29 +204,44 @@ def generate_hallucinations_from_qa_data(
             )
         except Exception as e:
             logger.error(f"Error during generation: {e}. Skipping...")
+            return None
 
-        hallucinated_labels = get_hallucinated_labels(hallucinated_dict=result)
+        labels_result = get_hallucinated_labels(hallucinated_dict=result)
 
         # Skip samples where labels cannot be reliably determined
-        if hallucinated_labels is None:
-            continue
+        if labels_result is None:
+            return None
 
-        # Save the record
-        record = dict(
+        hallucinated_labels, clean_parts = labels_result
+
+        return dict(
             hash=hash_,
             context=context,
             question=question,
             answer=answer,
             hallucinated_answer=result["hallucinated_answer"],
-            hallucinated_parts=result["hallucinated_parts"],
+            hallucinated_parts=clean_parts,
             hallucinated_labels=hallucinated_labels,
             intensity=intensity,
         )
-        records.append(record)
-        hashes.add(hash_)
-        if output_jsonl_path is not None:
-            with output_jsonl_path.open("a") as f:
-                f.write(json.dumps(record) + "\n")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_process_one, item): item for item in items_to_process
+        }
+        with tqdm(total=len(items_to_process)) as pbar:
+            for future in as_completed(futures):
+                pbar.update(1)
+                record = future.result()
+                if record is None:
+                    continue
+                with records_lock:
+                    records.append(record)
+                    hashes.add(record["hash"])
+                if output_jsonl_path is not None:
+                    with file_lock:
+                        with output_jsonl_path.open("a") as f:
+                            f.write(json.dumps(record) + "\n")
 
     # Remove records where the hallucinated answer is identical to the original answer
     records = [
@@ -260,36 +293,76 @@ def generate_hash(context: list[str], question: str, answer: str) -> str:
     return hashlib.md5((context[0] + question + answer).encode("utf-8")).hexdigest()
 
 
-def get_hallucinated_labels(hallucinated_dict: dict) -> list[dict] | None:
+def get_hallucinated_labels(
+    hallucinated_dict: dict,
+) -> tuple[list[dict], list[str]] | None:
     """Get the hallucinated labels from the generation result.
+
+    Filters out parts that are absent from the hallucinated answer, discards
+    ambiguous parts that appear more than once, and removes redundant parts
+    whose spans are fully overlapped by a longer accepted part (e.g. '2005'
+    and '2008' when '2005/2008' is already labelled).
 
     Args:
         hallucinated_dict:
             The dictionary from the hallucination generator.
 
     Returns:
-        A list of dictionaries with start, end, and label for each hallucinated part,
-        or None if the labels cannot be reliably determined.
+        A tuple of (labels, clean_parts) where labels is a list of dicts with
+        start, end, and label for each accepted hallucinated span and clean_parts
+        is the corresponding filtered list of hallucinated part strings, or None
+        if the labels cannot be reliably determined.
     """
-    hallucinated_labels = []
-    for part in hallucinated_dict["hallucinated_parts"]:
-        answer = hallucinated_dict["hallucinated_answer"]
-        count = answer.count(part)
+    answer = hallucinated_dict["hallucinated_answer"]
+    raw_parts = hallucinated_dict["hallucinated_parts"]
 
-        if count > 1:
-            # Cannot reliably label - discard this sample
+    # First pass: drop parts absent from the answer or ambiguously duplicated.
+    present_parts: list[str] = []
+    for part in raw_parts:
+        count = answer.count(part)
+        if count == 0:
+            logger.warning(
+                f"Skipping hallucinated part {part!r} — not found in answer."
+            )
+        elif count > 1:
             logger.warning(
                 f"Discarding sample - hallucinated part {part!r} appears {count} times "
                 f"in answer, cannot determine which occurrence is hallucinated."
             )
             return None
+        else:
+            present_parts.append(part)
 
+    # Second pass: sort by length descending so longer (more specific) spans take
+    # priority, then skip any span that overlaps with an already-accepted span.
+    present_parts.sort(key=len, reverse=True)
+
+    accepted_spans: list[tuple[int, int]] = []
+    hallucinated_labels: list[dict] = []
+    clean_parts: list[str] = []
+
+    for part in present_parts:
         start = answer.find(part)
-        if start != -1:
-            hallucinated_labels.append(
-                {"start": start, "end": start + len(part), "label": "hallucinated"}
+        end = start + len(part)
+        if any(not (end <= s or start >= e) for s, e in accepted_spans):
+            logger.warning(
+                f"Skipping redundant/overlapping hallucinated part {part!r}."
             )
-    return hallucinated_labels
+            continue
+        accepted_spans.append((start, end))
+        hallucinated_labels.append(
+            {"start": start, "end": end, "label": "hallucinated"}
+        )
+        clean_parts.append(part)
+
+    # Re-sort labels and parts by position in the answer for a natural order.
+    order = sorted(
+        range(len(hallucinated_labels)), key=lambda i: hallucinated_labels[i]["start"]
+    )
+    hallucinated_labels = [hallucinated_labels[i] for i in order]
+    clean_parts = [clean_parts[i] for i in order]
+
+    return hallucinated_labels, clean_parts
 
 
 def generate_lettucedetect_hallucination_samples(

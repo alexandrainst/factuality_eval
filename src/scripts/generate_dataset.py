@@ -55,7 +55,10 @@ def main(config: DictConfig) -> None:
         answers=answers,
         intensities=intensities,
         model=config.models.hallu_gen_model,
-        output_jsonl_path=Path("data", "final", f"{target_dataset_name}.jsonl"),
+        output_jsonl_path=Path(
+            "data", "final", f"{target_dataset_name}-{config.language}.jsonl"
+        ),
+        max_workers=config.max_workers,
     )
 
     # Push the generated dataset to the Hugging Face Hub

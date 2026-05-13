@@ -1,13 +1,13 @@
-"""Detect hallucinations.
+"""Run a baseline hallucination check on gold answers.
 
 Usage:
-    uv run src/scripts/detect_hallucinations.py <config_key>=<config_value> ...
+    uv run src/scripts/baseline.py <config_key>=<config_value> ...
 """
 
 import logging
-from pathlib import Path
 
 import hydra
+from datasets import Dataset
 from dotenv import load_dotenv
 from omegaconf import DictConfig
 
@@ -16,8 +16,7 @@ from factuality_eval.hallucination_detection import (
     detect_hallucinations,
     evaluate_predicted_answers,
 )
-from factuality_eval.model_generation import generate_answers_from_qa_data
-from factuality_eval.train import format_dataset_to_ragtruth_without_labels
+from factuality_eval.prompt_utils import PromptUtils
 
 load_dotenv()
 
@@ -28,21 +27,15 @@ logger = logging.getLogger(__name__)
     config_path="../../config", config_name="hallucination_detection", version_base=None
 )
 def main(config: DictConfig) -> None:
-    """Main function.
-
-    Args:
-        config:
-            The Hydra config for your project.
-    """
+    """Run a baseline where gold answers are checked for hallucinations."""
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    target_dataset_name = (
-        f"{config.base_dataset.id}-{config.language}-"
-        f"{config.models.eval_model.split('/')[1]}"
+    base_dataset_id = (
+        f"{config.base_dataset.organisation}/{config.base_dataset.id}:{config.language}"
     )
 
     contexts, questions, answers = load_qa_data(
-        base_dataset_id=f"{config.base_dataset.organisation}/{config.base_dataset.id}:{config.language}",
+        base_dataset_id=base_dataset_id,
         split="test",
         context_key=config.base_dataset.context_key,
         question_key=config.base_dataset.question_key,
@@ -52,29 +45,30 @@ def main(config: DictConfig) -> None:
         max_examples=config.generation.max_examples,
     )
 
-    generated_answers = generate_answers_from_qa_data(
-        eval_model=config.models.eval_model,
-        contexts=contexts,
-        questions=questions,
-        answers=answers,
-        lang=config.language,
-        max_new_tokens=config.generation.max_new_tokens,
-        output_jsonl_path=Path("data", "final", f"{target_dataset_name}.jsonl"),
+    prompts = [
+        PromptUtils.format_context(ctx, q, lang=config.language)
+        for ctx, q in zip(contexts, questions)
+    ]
+
+    dataset = Dataset.from_dict(
+        {
+            "context": contexts,
+            "question": questions,
+            "answer": answers,
+            "prompt": prompts,
+        }
     )
 
     target_dataset_name = f"{config.base_dataset.id}-synthetic-hallucinations"
-
     hallucination_detector_hugging_face_path = (
         f"{config.hub_organisation}/"
         f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}"
     )
-    rag_truth_dataset = format_dataset_to_ragtruth_without_labels(
-        generated_answers, language=config.language, split="test"
-    )
-    hallucinations = detect_hallucinations(
-        rag_truth_dataset, model=hallucination_detector_hugging_face_path
-    )
 
+    logger.info("Running hallucination baseline on gold answers...")
+    hallucinations = detect_hallucinations(
+        dataset, model=hallucination_detector_hugging_face_path
+    )
     evaluate_predicted_answers(hallucinations)
 
 

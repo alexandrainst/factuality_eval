@@ -1,0 +1,5 @@
+Teksti: ${text}
+
+Përgjigjuni pyetjes së mëposhtme mbi tekstin e mësipërm.
+
+Pyetja: ${question}
