@@ -167,8 +167,6 @@ def generate_hallucinations_from_qa_data(
 
     from lettucedetect import HallucinationGenerator
 
-    logger.info("imported lettucedetect...")
-
     generator = HallucinationGenerator(model=model, temperature=temperature)
     records: list[dict] = list()
 
