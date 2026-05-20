@@ -15,7 +15,13 @@ from datasets import Dataset, concatenate_datasets, load_dataset
 from dotenv import load_dotenv
 from lettucedetect import HallucinationDataset
 from lettucedetect.datasets.hallucination_dataset import HallucinationData
-from lettucedetect.models.evaluator import evaluate_model, print_metrics
+from lettucedetect.models.evaluator import (
+    evaluate_detector_char_level,
+    evaluate_model,
+    evaluate_model_example_level,
+    print_metrics,
+)
+from lettucedetect.models.inference import HallucinationDetector
 from lettucedetect.models.trainer import Trainer
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
@@ -32,7 +38,8 @@ from factuality_eval.dataset_generation import (
     sample_hallucination_intensities,
 )
 from factuality_eval.train import format_dataset_to_ragtruth
-
+import torch
+torch.set_float32_matmul_precision("high")
 load_dotenv()
 logger = logging.getLogger("train_hallucination_detector")
 
@@ -175,14 +182,22 @@ def main(config: DictConfig) -> None:
         # for training (DataLoader shuffles), but it's predictable for logging.
         ragtruth_train_ds = Dataset.from_list(ragtruth_train)
         ragtruth_test_ds = Dataset.from_list(ragtruth_test)
-        train_dataset = concatenate_datasets([synthetic_train, ragtruth_train_ds])
-        test_dataset = concatenate_datasets([synthetic_test, ragtruth_test_ds])
-        logger.info(
-            f"Combined dataset: {len(train_dataset)} train "
-            f"({len(synthetic_train)} synthetic + {len(ragtruth_train)} ragtruth), "
-            f"{len(test_dataset)} test "
-            f"({len(synthetic_test)} synthetic + {len(ragtruth_test)} ragtruth)"
-        )
+        
+        if config.enable_wiki==True:
+            train_dataset = concatenate_datasets([synthetic_train, ragtruth_train_ds])
+            test_dataset = concatenate_datasets([synthetic_test, ragtruth_test_ds])
+            logger.info(
+                f"Combined dataset: {len(train_dataset)} train "
+                f"({len(synthetic_train)} synthetic + {len(ragtruth_train)} ragtruth), "
+                f"{len(test_dataset)} test "
+                f"({len(synthetic_test)} synthetic + {len(ragtruth_test)} ragtruth)"
+            )
+        else:
+            train_dataset = ragtruth_train_ds
+            test_dataset = ragtruth_test_ds
+            logger.info(
+                logger.info("No wiki in config; training on synthetic data only.")
+            )
     else:
         logger.info("No ragtruth.path in config; training on synthetic data only.")
         train_dataset = synthetic_train
@@ -205,15 +220,43 @@ def main(config: DictConfig) -> None:
         tokenizer=tokenizer, label_pad_token_id=-100
     )
 
+    max_length = config.training.max_length
+
+    def _fits_in_max_length(example: dict) -> bool:
+        # Mirror HallucinationDataset's tokenization (prompt + answer as a pair,
+        # with special tokens) but without truncation, so we can drop samples
+        # whose context would otherwise be silently truncated.
+        encoded = tokenizer(
+            example["prompt"],
+            example["answer"],
+            truncation=False,
+            add_special_tokens=True,
+            return_attention_mask=False,
+            return_token_type_ids=False,
+        )
+        return len(encoded["input_ids"]) <= max_length
+
+    train_before = len(train_dataset)
+    test_before = len(test_dataset)
+    train_dataset = train_dataset.filter(_fits_in_max_length)
+    test_dataset = test_dataset.filter(_fits_in_max_length)
+    logger.info(
+        f"Filtered samples exceeding max_length={max_length}: "
+        f"train {train_before} -> {len(train_dataset)} "
+        f"({train_before - len(train_dataset)} dropped), "
+        f"test {test_before} -> {len(test_dataset)} "
+        f"({test_before - len(test_dataset)} dropped)"
+    )
+
     train_hallu_dataset = HallucinationDataset(
         generate_lettucedetect_hallucination_samples(train_dataset),
         tokenizer,
-        max_length=config.training.max_length,
+        max_length=max_length,
     )
     test_hallu_dataset = HallucinationDataset(
         generate_lettucedetect_hallucination_samples(test_dataset),
         tokenizer,
-        max_length=config.training.max_length,
+        max_length=max_length,
     )
 
     train_loader = DataLoader(
@@ -231,16 +274,41 @@ def main(config: DictConfig) -> None:
 
     # Naming: include "+ragtruth" suffix so combined-vs-synthetic-only models
     # don't overwrite each other in the output dir / hub repo.
-    suffix = (
-        "-with-ragtruth"
-        if config.get("ragtruth", None) and config.ragtruth.get("path", None)
-        else ""
-    )
+    if config.get("ragtruth", None) and config.ragtruth.get("enable", False):
+        suffix = "-with-ragtruth" if config.get("enable_wiki", False) else "-only-ragtruth"
+    else:
+        suffix = ""
     model_save_path = (
         f"{config.training.output_dir}/"
         f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}{suffix}"
     )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def _run_full_evaluation(eval_model: AutoModelForTokenClassification) -> None:
+        """Evaluate at token, example, and span (char) level — matches LettuceDetect paper."""
+        eval_model.eval()
+
+        logger.info("\n---- Token-level ----")
+        print_metrics(evaluate_model(eval_model, test_loader, device))
+
+        logger.info("\n---- Example-level (any hallucinated token => hallucinated example) ----")
+        print_metrics(evaluate_model_example_level(eval_model, test_loader, device))
+
+        logger.info("\n---- Span / char-level (overlap with gold spans) ----")
+        # HallucinationDetector reloads from disk, so point it at the saved model.
+        detector = HallucinationDetector(
+            method="transformer",
+            model_path=model_save_path,
+            trust_remote_code=True,
+        )
+        test_samples = generate_lettucedetect_hallucination_samples(test_dataset)
+        char_metrics = evaluate_detector_char_level(detector, test_samples)
+        logger.info(
+            f"  Precision: {char_metrics['precision']:.4f}  "
+            f"Recall: {char_metrics['recall']:.4f}  "
+            f"F1: {char_metrics['f1']:.4f}"
+        )
+
     if os.path.exists(model_save_path) and os.path.isdir(model_save_path):
         logging.info(f"Loading existing model from {model_save_path}")
         model = AutoModelForTokenClassification.from_pretrained(
@@ -249,8 +317,7 @@ def main(config: DictConfig) -> None:
         model.to(device)
 
         logger.info("\nEvaluating...")
-        metrics = evaluate_model(model, test_loader, device)
-        print_metrics(metrics)
+        _run_full_evaluation(model)
 
     else:
         model = AutoModelForTokenClassification.from_pretrained(
@@ -269,6 +336,14 @@ def main(config: DictConfig) -> None:
 
         logging.info("Starting training...")
         trainer.train()
+
+        # Re-load the best checkpoint (Trainer saves the best-F1 model to save_path)
+        # and run the full multi-level evaluation on it.
+        best_model = AutoModelForTokenClassification.from_pretrained(
+            model_save_path, trust_remote_code=True, use_safetensors=True
+        ).to(device)
+        logger.info("\nFinal evaluation on best checkpoint:")
+        _run_full_evaluation(best_model)
 
         if config.training.push_to_hub:
             hub_repo_id = (

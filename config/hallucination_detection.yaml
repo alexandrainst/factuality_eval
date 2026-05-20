@@ -26,12 +26,12 @@ save_dataset_to_file: false
 
 training:
   output_dir: models
-  batch_size: 1
-  epochs: 10
+  batch_size: 16
+  epochs: 5
   learning_rate: 1e-5
   weight_decay: 0.01
   push_to_hub: False
-  max_length: 4096
+  max_length: 8192
 
 models:
   hallu_detect_model: mmBERT-small
@@ -57,3 +57,4 @@ manual_check:
 ragtruth:
   path: data/processed/ragtruth_da/ragtruth_data_da.json
   enable: true
+enable_wiki: false
