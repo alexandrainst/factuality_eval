@@ -31,8 +31,7 @@ def main(config: DictConfig) -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     base_dataset_id = (
-        f"{config.base_dataset.organisation}/{config.base_dataset.id}"
-        f":{config.language}"
+        f"{config.base_dataset.organisation}/{config.base_dataset.id}:{config.language}"
     )
 
     contexts, questions, answers = load_qa_data(

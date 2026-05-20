@@ -279,10 +279,7 @@ def load_model_for_generation(
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     max_memory = _build_max_memory()
     model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype="auto",
-        device_map="auto",
-        max_memory=max_memory,
+        model_name, torch_dtype="auto", device_map="auto", max_memory=max_memory
     )
 
     return model, tokenizer

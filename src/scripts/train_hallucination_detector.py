@@ -13,6 +13,7 @@ import hydra
 import torch
 from datasets import Dataset, concatenate_datasets, load_dataset
 from dotenv import load_dotenv
+from hydra.core.hydra_config import HydraConfig
 from lettucedetect import HallucinationDataset
 from lettucedetect.datasets.hallucination_dataset import HallucinationData
 from lettucedetect.models.evaluator import (
@@ -37,6 +38,7 @@ from factuality_eval.dataset_generation import (
     load_qa_data,
     sample_hallucination_intensities,
 )
+from factuality_eval.logging_utils import capture_stdio_to_file, header, log
 from factuality_eval.train import format_dataset_to_ragtruth
 import torch
 torch.set_float32_matmul_precision("high")
@@ -86,9 +88,10 @@ def load_ragtruth_translated(path: Path, language: str) -> tuple[list, list]:
         else:
             logger.warning(f"Unknown split '{sample.split}' on sample, skipping.")
 
-    logger.info(
+    log(
         f"Loaded translated RAGTruth ({language}): "
-        f"{len(train_samples)} train, {len(test_samples)} test"
+        f"{len(train_samples)} train, {len(test_samples)} test",
+        level=logging.INFO,
     )
     return train_samples, test_samples
 
@@ -103,87 +106,102 @@ def main(config: DictConfig) -> None:
         config:
             The Hydra config for your project.
     """
+    hydra_output_dir = Path(HydraConfig.get().runtime.output_dir)
+    capture_stdio_to_file(hydra_output_dir / f"{HydraConfig.get().job.name}.log")
+
     target_dataset_name = f"{config.base_dataset.id}-synthetic-hallucinations"
 
-    # ------------------------------------------------------------------
-    # 1. Load / generate synthetic hallucination dataset (existing flow)
-    # ------------------------------------------------------------------
-    try:
-        dataset = load_dataset(
-            f"{config.hub_organisation}/{target_dataset_name}", name=config.language
+    if not config.multiwikiqa.enable and not config.ragtruth.enable:
+        raise ValueError(
+            "Both multiwikiqa and ragtruth are disabled; nothing to train on. "
+            "Enable at least one of config.multiwikiqa.enable / config.ragtruth.enable."
         )
-    except ValueError:
-        logger.info(
-            f"Language '{config.language}' not found in hub dataset "
-            f"'{config.hub_organisation}/{target_dataset_name}'. "
-            "Generating dataset locally and pushing to hub..."
-        )
-        contexts, questions, answers = load_qa_data(
-            base_dataset_id=(
-                f"{config.base_dataset.organisation}/{config.base_dataset.id}"
-                f":{config.language}"
-            ),
-            split=config.base_dataset.split,
-            context_key=config.base_dataset.context_key,
-            question_key=config.base_dataset.question_key,
-            answer_key=config.base_dataset.answer_key,
-            squad_format=config.base_dataset.squad_format,
-            testing=config.testing,
-        )
-        intensities = sample_hallucination_intensities(
-            mean=config.beta_distribution.mean,
-            std=config.beta_distribution.std,
-            size=len(answers),
-        )
-        generated = generate_hallucinations_from_qa_data(
-            contexts=contexts,
-            questions=questions,
-            answers=answers,
-            intensities=intensities,
-            model=config.models.hallu_gen_model,
-            output_jsonl_path=Path(
-                "data", "final", f"{target_dataset_name}-{config.language}.jsonl"
-            ),
-            max_workers=config.max_workers,
-        )
-        generated.push_to_hub(
-            repo_id=f"{config.hub_organisation}/{target_dataset_name}",
-            config_name=config.language,
-            private=config.private,
-        )
-        dataset = load_dataset(
-            f"{config.hub_organisation}/{target_dataset_name}", name=config.language
-        )
-    train_test_split = dataset["train"].train_test_split(
-        test_size=0.2, seed=42, shuffle=False
-    )
-
-    # Process synthetic dataset to ragtruth format
-    synthetic_train = format_dataset_to_ragtruth(
-        train_test_split["train"], language=config.language, split="train"
-    )
-    synthetic_test = format_dataset_to_ragtruth(
-        train_test_split["test"], language=config.language, split="test"
-    )
-    logger.info(
-        f"Synthetic dataset: {len(synthetic_train)} train, {len(synthetic_test)} test"
-    )
 
     # ------------------------------------------------------------------
-    # 2. Load translated RAGTruth and combine with synthetic
+    # 1. Load / generate synthetic MultiWikiQA hallucination dataset
     # ------------------------------------------------------------------
+    synthetic_train: Dataset | None = None
+    synthetic_test: Dataset | None = None
+    if config.multiwikiqa.enable:
+        header("Preparing synthetic dataset", color="light_blue", level=logging.INFO)
+        try:
+            dataset = load_dataset(
+                f"{config.hub_organisation}/{target_dataset_name}", name=config.language
+            )
+        except ValueError:
+            log(
+                f"Language '{config.language}' not found in hub dataset "
+                f"'{config.hub_organisation}/{target_dataset_name}'. "
+                "Generating dataset locally and pushing to hub...",
+                level=logging.INFO,
+            )
+            contexts, questions, answers = load_qa_data(
+                base_dataset_id=(
+                    f"{config.base_dataset.organisation}/{config.base_dataset.id}"
+                    f":{config.language}"
+                ),
+                split=config.base_dataset.split,
+                context_key=config.base_dataset.context_key,
+                question_key=config.base_dataset.question_key,
+                answer_key=config.base_dataset.answer_key,
+                squad_format=config.base_dataset.squad_format,
+                testing=config.testing,
+            )
+            intensities = sample_hallucination_intensities(
+                mean=config.beta_distribution.mean,
+                std=config.beta_distribution.std,
+                size=len(answers),
+            )
+            generated = generate_hallucinations_from_qa_data(
+                contexts=contexts,
+                questions=questions,
+                answers=answers,
+                intensities=intensities,
+                model=config.models.hallu_gen_model,
+                output_jsonl_path=Path(
+                    "data", "final", f"{target_dataset_name}-{config.language}.jsonl"
+                ),
+                max_workers=config.max_workers,
+            )
+            generated.push_to_hub(
+                repo_id=f"{config.hub_organisation}/{target_dataset_name}",
+                config_name=config.language,
+                private=config.private,
+            )
+            dataset = load_dataset(
+                f"{config.hub_organisation}/{target_dataset_name}", name=config.language
+            )
+        train_test_split = dataset["train"].train_test_split(
+            test_size=0.2, seed=42, shuffle=False
+        )
+
+        synthetic_train = format_dataset_to_ragtruth(
+            train_test_split["train"], language=config.language, split="train"
+        )
+        synthetic_test = format_dataset_to_ragtruth(
+            train_test_split["test"], language=config.language, split="test"
+        )
+        log(
+            f"Synthetic dataset: {len(synthetic_train)} train, "
+            f"{len(synthetic_test)} test",
+            level=logging.INFO,
+        )
+
+    # ------------------------------------------------------------------
+    # 2. Load translated RAGTruth
+    # ------------------------------------------------------------------
+    ragtruth_train_ds: Dataset | None = None
+    ragtruth_test_ds: Dataset | None = None
     if config.ragtruth.enable:
+        header("Loading translated RAGTruth", color="light_blue", level=logging.INFO)
         ragtruth_path = Path(config.ragtruth.path)
         ragtruth_train, ragtruth_test = load_ragtruth_translated(
             ragtruth_path, language=config.language
         )
-
-        # Combine the two sources. Synthetic comes first; order doesn't matter
-        # for training (DataLoader shuffles), but it's predictable for logging.
         ragtruth_train_ds = Dataset.from_list(ragtruth_train)
         ragtruth_test_ds = Dataset.from_list(ragtruth_test)
         
-        if config.enable_wiki==True:
+        if config.multiwikiqa.enable==True:
             train_dataset = concatenate_datasets([synthetic_train, ragtruth_train_ds])
             test_dataset = concatenate_datasets([synthetic_test, ragtruth_test_ds])
             logger.info(
@@ -203,6 +221,8 @@ def main(config: DictConfig) -> None:
         train_dataset = synthetic_train
         test_dataset = synthetic_test
 
+
+
     # Shuffle the combined train/test datasets so RAGTruth and synthetic
     # MultiWikiQA examples are interleaved. This is done *after* the
     # train/test split so paired clean/hallucinated synthetic rows stay in
@@ -211,8 +231,9 @@ def main(config: DictConfig) -> None:
     test_dataset = test_dataset.shuffle(seed=42)
 
     # ------------------------------------------------------------------
-    # 3. Tokenize and train (existing flow, unchanged below)
+    # 4. Tokenize and train
     # ------------------------------------------------------------------
+    header("Setting up tokenizer & model", color="light_blue", level=logging.INFO)
     tokenizer = AutoTokenizer.from_pretrained(
         config.models.pretrained_model, trust_remote_code=True
     )
@@ -275,9 +296,10 @@ def main(config: DictConfig) -> None:
     # Naming: include "+ragtruth" suffix so combined-vs-synthetic-only models
     # don't overwrite each other in the output dir / hub repo.
     if config.get("ragtruth", None) and config.ragtruth.get("enable", False):
-        suffix = "-with-ragtruth" if config.get("enable_wiki", False) else "-only-ragtruth"
+        suffix = "-with-ragtruth" if config.multiwikiqa.get("enable", False) else "-only-ragtruth"
     else:
         suffix = ""
+
     model_save_path = (
         f"{config.training.output_dir}/"
         f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}{suffix}"
@@ -310,7 +332,8 @@ def main(config: DictConfig) -> None:
         )
 
     if os.path.exists(model_save_path) and os.path.isdir(model_save_path):
-        logging.info(f"Loading existing model from {model_save_path}")
+        header("Evaluating existing checkpoint", color="light_blue", level=logging.INFO)
+        log(f"Loading existing model from {model_save_path}", level=logging.INFO)
         model = AutoModelForTokenClassification.from_pretrained(
             model_save_path, trust_remote_code=True, use_safetensors=True
         )
@@ -334,7 +357,8 @@ def main(config: DictConfig) -> None:
             save_path=model_save_path,
         )
 
-        logging.info("Starting training...")
+        header("Fine-tuning", color="light_blue", level=logging.INFO)
+        log("Starting training...", level=logging.INFO)
         trainer.train()
 
         # Re-load the best checkpoint (Trainer saves the best-F1 model to save_path)
@@ -346,6 +370,7 @@ def main(config: DictConfig) -> None:
         _run_full_evaluation(best_model)
 
         if config.training.push_to_hub:
+            header("Pushing to hub", color="light_blue", level=logging.INFO)
             hub_repo_id = (
                 f"{config.hub_organisation}/"
                 f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}{suffix}"
@@ -356,4 +381,3 @@ def main(config: DictConfig) -> None:
 
 if __name__ == "__main__":
     main()
-

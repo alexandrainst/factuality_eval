@@ -1,6 +1,5 @@
 """Automatic generation of hallucination datasets."""
 
-import difflib
 import hashlib
 import json
 import logging
@@ -8,10 +7,10 @@ import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from lettucedetect import HallucinationSample
 
 import numpy as np
 from datasets import Dataset, load_dataset
+from lettucedetect import HallucinationSample
 from tqdm.auto import tqdm
 
 logger = logging.getLogger(__name__)
@@ -167,7 +166,6 @@ def generate_hallucinations_from_qa_data(
     logger.info("Generating hallucinations...")
 
     from lettucedetect import HallucinationGenerator
-    logger.info("imported lettucedetect...")
 
     generator = HallucinationGenerator(model=model, temperature=temperature)
     records: list[dict] = list()
@@ -194,9 +192,7 @@ def generate_hallucinations_from_qa_data(
     file_lock = threading.Lock()
     records_lock = threading.Lock()
 
-    def _process_one(
-        item: tuple[list[str], str, str, float],
-    ) -> dict | None:
+    def _process_one(item: tuple[list[str], str, str, float]) -> dict | None:
         """Process a single QA pair and return a record or None to skip."""
         context, question, answer, intensity = item
         hash_ = generate_hash(context=context, question=question, answer=answer)
@@ -380,7 +376,6 @@ def generate_lettucedetect_hallucination_samples(
     Returns:
         A list of hallucination samples.
     """
-
     samples = []
     for item in dataset_split:
         sample = HallucinationSample(

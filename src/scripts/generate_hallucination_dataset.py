@@ -19,13 +19,12 @@ from typing import Any
 import hydra
 from datasets import Dataset
 from dotenv import load_dotenv
+from lettucedetect.models.inference import HallucinationDetector
 from omegaconf import DictConfig
 
 from factuality_eval.dataset_generation import load_qa_data
 from factuality_eval.model_generation import generate_answers_from_qa_data
 from factuality_eval.prompt_utils import Lang, PromptUtils
-from lettucedetect.datasets.hallucination_dataset import HallucinationDataset
-from lettucedetect.models.inference import HallucinationDetector
 
 load_dotenv()
 
@@ -40,7 +39,8 @@ def _build_detector_model_path(config: DictConfig) -> str:
     )
 
 
-def _format_context(context: Any) -> list[str]:
+def _format_context(context: list | tuple | str) -> list[str]:
+    """Normalize an arbitrary context value to a list of strings."""
     if isinstance(context, (list, tuple)):
         return [str(c) for c in context]
     return [str(context)]
@@ -56,11 +56,7 @@ def _extract_hallucinated_tokens(
     prompt = PromptUtils.format_context(context, question, lang)
 
     # Use detector's span output to avoid offset drift between our formatter and the model tokenizer.
-    spans = detector.predict_prompt(
-        prompt=prompt,
-        answer=answer,
-        output_format="spans",
-    )
+    spans = detector.predict_prompt(prompt=prompt, answer=answer, output_format="spans")
 
     # Normalize span schema without confidence/probability.
     normalized: list[dict[str, Any]] = []
@@ -80,6 +76,7 @@ def _extract_hallucinated_tokens(
     config_path="../../config", config_name="hallucination_detection", version_base=None
 )
 def main(config: DictConfig) -> None:
+    """Run hallucination annotation over the configured QA dataset."""
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     target_dataset_name = (

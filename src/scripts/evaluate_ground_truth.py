@@ -1,29 +1,21 @@
-"""Evaluate the hallucination detector against token-level ground truth.
+"""Validate the trained hallucination detector against token-level labels.
 
-Phase 1 loads the synthetic-hallucinations dataset from the HuggingFace Hub
-(it is *not* regenerated) and uses its ``hallucinated_labels`` column as
-ground truth, computing per-token precision / recall / F1 / AUROC via
-``lettucedetect``'s ``evaluate_model``.
-
-Phase 2 reads the existing Qwen3-0.6B answers from ``data/final/`` and runs
-the detector on them to report the hallucination rate. It also dumps
-token-level predictions to a JSONL file and writes a ground-truth
-evaluation dataset that combines detector predictions with empty slots for
-LLM evaluation and human annotation. The LLM evaluation is filled in by a
-separate script later — this script never calls an external API.
+This script loads the synthetic-hallucinations dataset from the HuggingFace Hub
+(it is not regenerated), uses its ``hallucinated_labels`` column as ground truth,
+and computes token-level metrics via ``lettucedetect``'s ``evaluate_model``. Its
+purpose is to check whether the trained detection method can identify
+hallucinated tokens.
 
 Usage:
     uv run src/scripts/evaluate_ground_truth.py <config_key>=<config_value> ...
 """
 
-import json
 import logging
 import os
-from pathlib import Path
 
 import hydra
 import torch
-from datasets import Dataset, load_dataset
+from datasets import load_dataset
 from dotenv import load_dotenv
 from lettucedetect import HallucinationDataset
 from lettucedetect.models.evaluator import evaluate_model, print_metrics
@@ -38,11 +30,6 @@ from transformers import (
 from factuality_eval.dataset_generation import (
     generate_lettucedetect_hallucination_samples,
 )
-from factuality_eval.ground_truth_eval import build_ground_truth_evaluation_dataset
-from factuality_eval.hallucination_detection import (
-    detect_hallucinations,
-    evaluate_predicted_answers,
-)
 from factuality_eval.train import format_dataset_to_ragtruth
 
 load_dotenv()
@@ -50,11 +37,23 @@ load_dotenv()
 logger = logging.getLogger("evaluate_ground_truth")
 
 
+def _training_sources_suffix(config: DictConfig) -> str:
+    """Return the model-name suffix used by the training script."""
+    sources = []
+    if config.multiwikiqa.enable:
+        sources.append("mwqa")
+    if config.ragtruth.enable:
+        sources.append("ragtruth")
+    return f"-{'+'.join(sources)}" if sources else ""
+
+
 def _resolve_model_path(config: DictConfig, target_dataset_name: str) -> str:
     """Return the local model directory if it exists, else the Hub repo id."""
+    suffix = _training_sources_suffix(config)
     local_path = (
         f"{config.training.output_dir}/"
-        f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}"
+        f"{config.models.hallu_detect_model}-{target_dataset_name}-"
+        f"{config.language}{suffix}"
     )
     if os.path.isdir(local_path):
         logger.info(f"Using local model checkpoint at {local_path}")
@@ -62,7 +61,8 @@ def _resolve_model_path(config: DictConfig, target_dataset_name: str) -> str:
 
     hub_path = (
         f"{config.hub_organisation}/"
-        f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}"
+        f"{config.models.hallu_detect_model}-{target_dataset_name}-"
+        f"{config.language}{suffix}"
     )
     logger.info(f"Local checkpoint not found; using Hub model {hub_path}")
     return hub_path
@@ -72,17 +72,14 @@ def _resolve_model_path(config: DictConfig, target_dataset_name: str) -> str:
     config_path="../../config", config_name="hallucination_detection", version_base=None
 )
 def main(config: DictConfig) -> None:
-    """Run ground-truth evaluation followed by inference on real model answers."""
+    """Run token-level validation for the trained hallucination detector."""
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     target_dataset_name = f"{config.base_dataset.id}-synthetic-hallucinations"
     model_path = _resolve_model_path(config, target_dataset_name)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # ------------------------------------------------------------------
-    # Phase 1 — Token-level ground-truth evaluation on the synthetic set.
-    # ------------------------------------------------------------------
-    logger.info("Phase 1: token-level ground-truth evaluation")
+    logger.info("Running token-level ground-truth evaluation")
 
     dataset = load_dataset(
         f"{config.hub_organisation}/{target_dataset_name}", name=config.language
@@ -120,56 +117,6 @@ def main(config: DictConfig) -> None:
 
     metrics = evaluate_model(model, test_loader, device)
     print_metrics(metrics)
-
-    # ------------------------------------------------------------------
-    # Phase 2 — Hallucination rate on the existing Qwen3-0.6B answers.
-    # ------------------------------------------------------------------
-    logger.info("Phase 2: detection on existing model answers")
-
-    answers_filename = (
-        f"{config.base_dataset.id}-{config.language}-"
-        f"{config.models.eval_model.split('/')[1]}.jsonl"
-    )
-    answers_path = Path("data", "final", answers_filename)
-    if not answers_path.exists():
-        raise FileNotFoundError(
-            f"Expected pre-generated answers at {answers_path}, but file is missing."
-        )
-
-    model_answers = Dataset.from_json(str(answers_path))
-    hallucinations = detect_hallucinations(model_answers, model=model_path)
-    evaluate_predicted_answers(hallucinations)
-
-    predictions_path = Path("data", "final", "evaluate_ground_truth_predictions.jsonl")
-    with predictions_path.open("w", encoding="utf-8") as f:
-        for sample_hash, predictions in zip(
-            model_answers["hash"], hallucinations["predict_answers"]
-        ):
-            f.write(
-                json.dumps(
-                    {"hash": sample_hash, "predictions": predictions},
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-    logger.info(f"Wrote token-level predictions to {predictions_path}")
-
-    # ------------------------------------------------------------------
-    # Phase 3 — Build a human-annotatable ground-truth evaluation dataset.
-    # No external API is called here; the LLM column is left empty and
-    # filled in by a separate script later.
-    # ------------------------------------------------------------------
-    logger.info("Phase 3: writing ground-truth evaluation dataset (no API calls)")
-
-    eval_dataset_path = Path("data", "final", "ground_truth_evaluation_dataset.jsonl")
-    build_ground_truth_evaluation_dataset(
-        hashes=list(model_answers["hash"]),
-        contexts=list(model_answers["context"]),
-        questions=list(model_answers["question"]),
-        answers=list(model_answers["answer"]),
-        predictions=hallucinations["predict_answers"],
-        output_path=eval_dataset_path,
-    )
 
 
 if __name__ == "__main__":

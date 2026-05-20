@@ -1,3 +1,5 @@
+"""Preprocess the RAGTruth dataset into the project's hallucination data format."""
+
 import argparse
 import json
 from pathlib import Path
