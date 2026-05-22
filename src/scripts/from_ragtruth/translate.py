@@ -12,6 +12,8 @@ from typing import Any
 
 import requests
 import tqdm
+from datasets import Dataset
+from dotenv import load_dotenv
 from lettucedetect.datasets.hallucination_dataset import (
     HallucinationData,
     HallucinationSample,
@@ -78,9 +80,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger("translator")
 
+# Match repo convention: load .env into process env for API credentials.
+load_dotenv()
+
 
 class TranslationError(Exception):
     """Exception raised for errors during translation."""
+
+    pass
+
+
+class RetryableTranslationError(Exception):
+    """Exception raised for transient translation/API errors that should be retried."""
 
     pass
 
@@ -106,8 +117,11 @@ def get_openai_client() -> dict[str, Any]:
     """
     api_key = os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
-    print(api_key)
-    print(base_url)
+    if not api_key:
+        raise ValueError(
+            "OPENAI_API_KEY is not set. Export it in your shell or load it from .env "
+            "before running translation."
+        )
     return {
         "url": f"{base_url.rstrip('/')}/chat/completions",
         "headers": {
@@ -118,7 +132,7 @@ def get_openai_client() -> dict[str, Any]:
 
 
 @retry(
-    retry=retry_if_exception_type((Exception)),
+    retry=retry_if_exception_type((RetryableTranslationError)),
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=1, min=2, max=60),
     reraise=True,
@@ -170,7 +184,31 @@ def translate_text(
         response = requests.post(
             client["url"], headers=client["headers"], json=payload, timeout=60
         )
-        response.raise_for_status()
+
+        if response.status_code >= 400:
+            try:
+                error_obj = response.json().get("error", {})
+                error_message = error_obj.get("message") or response.text
+                error_type = error_obj.get("type")
+                error_code = error_obj.get("code")
+            except Exception:
+                error_message = response.text
+                error_type = None
+                error_code = None
+
+            message = (
+                f"API error {response.status_code}"
+                f" (type={error_type}, code={error_code}): {error_message}"
+            )
+
+            # Retry transient errors only.
+            if response.status_code == 429 or response.status_code >= 500:
+                logger.warning(message)
+                raise RetryableTranslationError(message)
+
+            # Do not retry non-transient client errors (e.g., bad request / context too long).
+            raise TranslationError(message)
+
         response_json = response.json()
 
         # Strip lines starting with the character '='
@@ -185,6 +223,14 @@ def translate_text(
         )
 
         return content.strip()
+    except RetryableTranslationError:
+        raise
+    except TranslationError:
+        raise
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        message = f"Transient network error: {e!s}"
+        logger.warning(message)
+        raise RetryableTranslationError(message) from e
     except Exception as e:
         logger.error(f"Translation error: {e!s}")
         raise TranslationError(f"Failed to translate text: {e!s}") from e
@@ -479,6 +525,49 @@ def save_progress(
             logger.error(f"Error saving backup: {e2!s}")
 
 
+def push_translated_data_to_hub(
+    translated_data: HallucinationData,
+    repo_id: str,
+    config_name: str,
+    private: bool,
+) -> None:
+    """Push translated hallucination data to Hugging Face Hub.
+
+    :param translated_data: Translated samples to push
+    :param repo_id: Target Hugging Face dataset repo id
+    :param config_name: Dataset config/subset name (typically language code)
+    :param private: Whether to keep dataset private on Hub
+    """
+    if not translated_data.samples:
+        logger.warning("No translated samples available; skipping Hub upload.")
+        return
+
+    rows = [
+        {
+            "prompt": sample.prompt,
+            "answer": sample.answer,
+            "labels": sample.labels,
+            "split": sample.split,
+            "task_type": sample.task_type,
+            "dataset": sample.dataset,
+            "language": sample.language,
+        }
+        for sample in translated_data.samples
+    ]
+
+    dataset = Dataset.from_list(rows)
+    dataset.push_to_hub(
+        repo_id=repo_id,
+        config_name=config_name,
+        private=private,
+    )
+    logger.info(
+        "Pushed translated dataset to hub: %s (config=%s)",
+        repo_id,
+        config_name,
+    )
+
+
 def main(
     input_dir: Path,
     output_dir: Path,
@@ -490,6 +579,9 @@ def main(
     max_workers: int = 5,
     resume: bool = True,
     test: bool = False,
+    push_to_hub: bool = False,
+    hub_repo_id: str | None = None,
+    private: bool = True,
 ) -> None:
     """Translates the preprocessed data using parallel processing.
 
@@ -503,6 +595,9 @@ def main(
     :param max_workers: Maximum number of worker threads
     :param resume: Whether to resume from previous run
     :param test: Test mode, only translate 1 sample
+    :param push_to_hub: Whether to push translated output to Hugging Face Hub
+    :param hub_repo_id: Optional explicit Hugging Face dataset repo id
+    :param private: Whether pushed dataset should be private
     """
     # Set up directories
     input_dir = Path(input_dir)
@@ -544,6 +639,18 @@ def main(
 
     if total_samples == 0:
         logger.info("No samples to translate. Exiting.")
+        if push_to_hub:
+            resolved_repo_id = (
+                hub_repo_id
+                if hub_repo_id
+                else f"alexandrainst/{dataset}-translated-hallucinations"
+            )
+            push_translated_data_to_hub(
+                translated_data=translated_data,
+                repo_id=resolved_repo_id,
+                config_name=target_lang.lower(),
+                private=private,
+            )
         return
 
     # Get OpenAI client
@@ -632,6 +739,19 @@ def main(
     )
     logger.info(f"Output saved to {output_file}")
 
+    if push_to_hub:
+        resolved_repo_id = (
+            hub_repo_id
+            if hub_repo_id
+            else f"alexandrainst/{dataset}-translated-hallucinations"
+        )
+        push_translated_data_to_hub(
+            translated_data=translated_data,
+            repo_id=resolved_repo_id,
+            config_name=target_lang.lower(),
+            private=private,
+        )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -687,6 +807,26 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test", action="store_true", help="Test mode, only translate 1 sample"
     )
+    parser.add_argument(
+        "--push-to-hub",
+        action="store_true",
+        help="Push translated dataset to Hugging Face Hub after translation",
+    )
+    parser.add_argument(
+        "--hub-repo-id",
+        type=str,
+        default=None,
+        help=(
+            "Target Hugging Face dataset repo id. "
+            "Default: alexandrainst/<dataset>-translated-hallucinations"
+        ),
+    )
+    parser.add_argument(
+        "--private",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Whether uploaded Hub dataset should be private",
+    )
     args = parser.parse_args()
     main(
         Path(args.input_dir),
@@ -699,4 +839,7 @@ if __name__ == "__main__":
         args.max_workers,
         not args.no_resume,
         args.test,
+        args.push_to_hub,
+        args.hub_repo_id,
+        args.private,
     )

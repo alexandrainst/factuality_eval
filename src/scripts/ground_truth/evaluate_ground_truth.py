@@ -7,7 +7,7 @@ purpose is to check whether the trained detection method can identify
 hallucinated tokens.
 
 Usage:
-    uv run src/scripts/evaluate_ground_truth.py <config_key>=<config_value> ...
+    uv run src/scripts/ground_truth/evaluate_ground_truth.py <config_key>=<config_value> ...
 """
 
 import logging

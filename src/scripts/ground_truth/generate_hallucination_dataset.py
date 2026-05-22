@@ -1,7 +1,7 @@
 """Generate hallucination-annotated dataset.
 
 Usage:
-    uv run src/scripts/generate_hallucination_dataset.py <config_key>=<config_value> ...
+    uv run src/scripts/ground_truth/generate_hallucination_dataset.py <config_key>=<config_value> ...
 
 The script generates answers with the eval model and then tags hallucinated
 segments using the hallucination classifier. The output JSONL contains per-row

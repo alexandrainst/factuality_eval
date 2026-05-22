@@ -112,13 +112,13 @@ uv run src/scripts/detect_hallucinations.py language=da models.eval_model=Qwen/Q
 Generate a JSONL dataset containing generated answers and hallucinated token spans:
 
 ```bash
-uv run src/scripts/generate_hallucination_dataset.py language=da models.eval_model=Qwen/Qwen3-0.6B
+uv run src/scripts/ground_truth/generate_hallucination_dataset.py language=da models.eval_model=Qwen/Qwen3-0.6B
 ```
 
 Evaluate a trained hallucination detector against token-level ground-truth labels:
 
 ```bash
-uv run src/scripts/evaluate_ground_truth.py language=da
+uv run src/scripts/ground_truth/evaluate_ground_truth.py language=da
 ```
 
 ## Data and Outputs
