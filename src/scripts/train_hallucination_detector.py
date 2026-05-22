@@ -158,6 +158,9 @@ def main(config: DictConfig) -> None:
                 answers=answers,
                 intensities=intensities,
                 model=config.models.hallu_gen_model,
+                reasoning_effort=getattr(
+                    config.models, "hallu_gen_reasoning_effort", None
+                ),
                 output_jsonl_path=Path(
                     "data", "final", f"{target_dataset_name}-{config.language}.jsonl"
                 ),

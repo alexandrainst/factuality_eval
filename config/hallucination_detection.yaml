@@ -38,6 +38,9 @@ models:
   pretrained_model: jhu-clsp/mmBERT-small
   eval_model: Qwen/Qwen3-0.6B
   hallu_gen_model: gpt-5-mini
+  # Optional reasoning effort for OpenAI reasoning-capable models.
+  # Examples: low, medium, high. Null means API default.
+  hallu_gen_reasoning_effort: low
 
 language: da
 
