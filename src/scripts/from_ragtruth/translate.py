@@ -1,16 +1,16 @@
 """Translate hallucination datasets between languages while preserving span labels."""
 
+import asyncio
 import argparse
 import json
 import logging
 import os
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-import requests
+import httpx
 import tqdm
 from datasets import Dataset
 from dotenv import load_dotenv
@@ -141,9 +141,11 @@ def get_openai_client() -> dict[str, Any]:
         f"(Attempt {retry_state.attempt_number}/5)"
     ),
 )
-def translate_text(
+async def translate_text(
     text: str,
-    client: dict[str, Any],
+    http_client: httpx.AsyncClient,
+    url: str,
+    semaphore: asyncio.Semaphore,
     model: str,
     task_type: str,
     source_lang: str = "EN",
@@ -153,7 +155,9 @@ def translate_text(
     """Translate text using OpenAI-compatible HTTP API with automatic retries.
 
     :param text: Text to translate
-    :param client: HTTP client config (url + headers)
+    :param http_client: Shared async HTTP client
+    :param url: API endpoint URL
+    :param semaphore: Concurrency limiter
     :param model: Model to use for translation
     :param source_lang: Source language code
     :param target_lang: Target language code
@@ -181,9 +185,9 @@ def translate_text(
             "messages": [{"role": "user", "content": translation_prompt}],
             "temperature": 0.4,
         }
-        response = requests.post(
-            client["url"], headers=client["headers"], json=payload, timeout=60
-        )
+
+        async with semaphore:
+            response = await http_client.post(url, json=payload)
 
         if response.status_code >= 400:
             try:
@@ -204,6 +208,13 @@ def translate_text(
             # Retry transient errors only.
             if response.status_code == 429 or response.status_code >= 500:
                 logger.warning(message)
+                if response.status_code == 429:
+                    retry_after = response.headers.get("retry-after")
+                    if retry_after:
+                        try:
+                            await asyncio.sleep(float(retry_after))
+                        except ValueError:
+                            pass
                 raise RetryableTranslationError(message)
 
             # Do not retry non-transient client errors (e.g., bad request / context too long).
@@ -227,7 +238,7 @@ def translate_text(
         raise
     except TranslationError:
         raise
-    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+    except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as e:
         message = f"Transient network error: {e!s}"
         logger.warning(message)
         raise RetryableTranslationError(message) from e
@@ -349,9 +360,11 @@ def find_hallucination_tags(
     return hal_spans, cleaned_text
 
 
-def translate_sample(
+async def translate_sample(
     sample: HallucinationSample,
-    client: dict[str, Any],
+    http_client: httpx.AsyncClient,
+    url: str,
+    semaphore: asyncio.Semaphore,
     model: str,
     sample_index: int,
     log_file: Path,
@@ -362,7 +375,9 @@ def translate_sample(
     """Translate a single sample.
 
     :param sample: Sample to translate
-    :param client: HTTP client config (url + headers)
+    :param http_client: Shared async HTTP client
+    :param url: API endpoint URL
+    :param semaphore: Concurrency limiter
     :param model: Model to use
     :param sample_index: Sample index
     :param log_file: Path to log file
@@ -379,20 +394,35 @@ def translate_sample(
             )
             return None
 
-        translated_prompt = translate_text(
-            sample.prompt, client, model, sample.task_type, source_lang, target_lang
-        )
-
         tagged_answer, labels = put_hallucination_tags(sample, sample.answer)
 
-        translated_answer = translate_text(
-            tagged_answer,
-            client,
-            model,
-            sample.task_type,
-            source_lang,
-            target_lang,
-            prompt=True,
+        prompt_task = asyncio.create_task(
+            translate_text(
+                sample.prompt,
+                http_client,
+                url,
+                semaphore,
+                model,
+                sample.task_type,
+                source_lang,
+                target_lang,
+            )
+        )
+        answer_task = asyncio.create_task(
+            translate_text(
+                tagged_answer,
+                http_client,
+                url,
+                semaphore,
+                model,
+                sample.task_type,
+                source_lang,
+                target_lang,
+                prompt=True,
+            )
+        )
+        translated_prompt, translated_answer = await asyncio.gather(
+            prompt_task, answer_task
         )
 
         # Default to the translated answer (will be replaced if there are hallucination spans)
@@ -443,55 +473,157 @@ def load_check_existing_data(output_file: Path) -> HallucinationData:
         return HallucinationData(samples=[])
 
 
-def translate_sample_wrapper(args: tuple) -> HallucinationSample | None:
-    """Wrapper function for translate_sample to use with concurrent.futures.
-
-    :param args: Tuple of arguments for translate_sample
-    :return: Result of translate_sample
-    """
-    return translate_sample(*args)
-
-
-def process_batch(
+async def process_batch(
     samples: list[HallucinationSample],
-    client: dict[str, Any],
+    http_client: httpx.AsyncClient,
+    url: str,
+    semaphore: asyncio.Semaphore,
     model: str,
     start_idx: int,
     log_file: Path,
     source_lang: str,
     target_lang: str,
     dataset: str,
-    executor: ThreadPoolExecutor,
 ) -> list[HallucinationSample]:
-    """Process a batch of samples in parallel using an existing executor.
+    """Process a batch of samples concurrently using asyncio.
 
     :param samples: List of samples to process
-    :param client: HTTP client config (url + headers)
+    :param http_client: Shared async HTTP client
+    :param url: API endpoint URL
+    :param semaphore: Concurrency limiter
     :param model: Model to use
     :param start_idx: Starting index for the batch
     :param log_file: Path to log file
     :param source_lang: Source language code
     :param target_lang: Target language code
     :param dataset: Dataset name
-    :param executor: ThreadPoolExecutor to use
     :return: List of translated samples (excluding failed translations)
     """
-    futures = []
+    tasks = []
     for i, sample in enumerate(samples, start=start_idx):
-        args = (sample, client, model, i, log_file, source_lang, target_lang, dataset)
-        future = executor.submit(translate_sample_wrapper, args)
-        futures.append(future)
+        task = asyncio.create_task(
+            translate_sample(
+                sample,
+                http_client,
+                url,
+                semaphore,
+                model,
+                i,
+                log_file,
+                source_lang,
+                target_lang,
+                dataset,
+            )
+        )
+        tasks.append(task)
 
     results = []
-    for future in futures:
-        try:
-            result = future.result()
-            if result:
-                results.append(result)
-        except Exception as e:
-            logger.error(f"Error in sample processing: {e!s}")
+    batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in batch_results:
+        if isinstance(result, Exception):
+            logger.error(f"Error in sample processing: {result!s}")
+        elif result:
+            results.append(result)
 
     return results
+
+
+async def run_translation(
+    remaining_samples: list[HallucinationSample],
+    translated_data: HallucinationData,
+    output_file: Path,
+    dataset: str,
+    target_lang: str,
+    output_dir: Path,
+    model: str,
+    source_lang: str,
+    total_samples: int,
+    num_processed: int,
+    batch_size: int,
+    max_workers: int,
+    test: bool,
+    log_file: Path,
+    client_config: dict[str, Any],
+) -> None:
+    """Run batched async translation with connection pooling.
+
+    :param remaining_samples: Samples that still need translation
+    :param translated_data: Existing translated data to append to
+    :param output_file: Output JSON file path
+    :param dataset: Dataset name
+    :param target_lang: Target language code
+    :param output_dir: Output directory
+    :param model: Model to use
+    :param source_lang: Source language code
+    :param total_samples: Number of remaining samples
+    :param num_processed: Number of already translated samples from resume
+    :param batch_size: Number of samples per batch
+    :param max_workers: Maximum concurrent API requests
+    :param test: Whether to run in test mode
+    :param log_file: Path to error log
+    :param client_config: API URL and headers
+    """
+    progress_bar = tqdm.tqdm(total=total_samples, desc="Translating")
+    start_time = time.time()
+    save_interval = 60
+    last_save_time = start_time
+
+    limits = httpx.Limits(
+        max_connections=max_workers * 2,
+        max_keepalive_connections=max_workers,
+    )
+    timeout = httpx.Timeout(60.0)
+    semaphore = asyncio.Semaphore(max_workers)
+
+    try:
+        async with httpx.AsyncClient(
+            headers=client_config["headers"],
+            timeout=timeout,
+            limits=limits,
+        ) as http_client:
+            for i in range(0, total_samples, batch_size):
+                if test and i > 0:
+                    break
+
+                batch = remaining_samples[i : i + batch_size]
+                batch_results = await process_batch(
+                    batch,
+                    http_client,
+                    client_config["url"],
+                    semaphore,
+                    model,
+                    num_processed + i,
+                    log_file,
+                    source_lang,
+                    target_lang,
+                    dataset,
+                )
+
+                translated_data.samples.extend(batch_results)
+                progress_bar.update(len(batch_results))
+
+                current_time = time.time()
+                if (
+                    current_time - last_save_time > save_interval
+                    or i + batch_size >= total_samples
+                ):
+                    save_progress(
+                        translated_data, output_file, dataset, target_lang, output_dir
+                    )
+                    last_save_time = current_time
+
+                current_count = len(translated_data.samples)
+                elapsed_time = current_time - start_time
+                samples_per_sec = (
+                    current_count / elapsed_time if elapsed_time > 0 else 0
+                )
+
+                logger.info(
+                    f"Processed {current_count}/{num_processed + total_samples} samples "
+                    f"({samples_per_sec:.2f} samples/sec)"
+                )
+    finally:
+        progress_bar.close()
 
 
 def save_progress(
@@ -592,7 +724,7 @@ def main(
     :param target_lang: Target language code
     :param dataset: Dataset name (ragtruth, ragbench, etc.)
     :param batch_size: Number of samples to process in each batch
-    :param max_workers: Maximum number of worker threads
+    :param max_workers: Maximum number of concurrent API requests
     :param resume: Whether to resume from previous run
     :param test: Test mode, only translate 1 sample
     :param push_to_hub: Whether to push translated output to Hugging Face Hub
@@ -661,62 +793,26 @@ def main(
     logger.info(f"Total samples to process: {total_samples}")
     logger.info(f"Batch size: {batch_size}, Max workers: {max_workers}")
 
-    # Create progress bar
-    progress_bar = tqdm.tqdm(total=total_samples, desc="Translating")
-
-    # Start time
-    start_time = time.time()
-    save_interval = 60  # Save at least every minute
-    last_save_time = start_time
-
     try:
-        # Process samples in batches
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for i in range(0, total_samples, batch_size):
-                if test and i > 0:
-                    break
-
-                batch = remaining_samples[i : i + batch_size]
-
-                # Process the whole batch using the existing executor
-                batch_results = process_batch(
-                    batch,
-                    client,
-                    model,
-                    num_processed + i,
-                    log_file,
-                    source_lang,
-                    target_lang,
-                    dataset,
-                    executor,
-                )
-
-                # Add results to translated data
-                translated_data.samples.extend(batch_results)
-                progress_bar.update(len(batch_results))
-
-                # Save progress periodically or at end of batch
-                current_time = time.time()
-                if (
-                    current_time - last_save_time > save_interval
-                    or i + batch_size >= total_samples
-                ):
-                    save_progress(
-                        translated_data, output_file, dataset, target_lang, output_dir
-                    )
-                    last_save_time = current_time
-
-                # Calculate and log progress
-                current_count = len(translated_data.samples)
-                elapsed_time = current_time - start_time
-                samples_per_sec = (
-                    current_count / elapsed_time if elapsed_time > 0 else 0
-                )
-
-                logger.info(
-                    f"Processed {current_count}/{num_processed + total_samples} samples "
-                    f"({samples_per_sec:.2f} samples/sec)"
-                )
+        asyncio.run(
+            run_translation(
+                remaining_samples=remaining_samples,
+                translated_data=translated_data,
+                output_file=output_file,
+                dataset=dataset,
+                target_lang=target_lang,
+                output_dir=output_dir,
+                model=model,
+                source_lang=source_lang,
+                total_samples=total_samples,
+                num_processed=num_processed,
+                batch_size=batch_size,
+                max_workers=max_workers,
+                test=test,
+                log_file=log_file,
+                client_config=client,
+            )
+        )
 
     except KeyboardInterrupt:
         logger.info("Translation interrupted by user. Saving progress...")
@@ -730,9 +826,6 @@ def main(
         logger.error(f"Unexpected error: {e!s}")
         save_progress(translated_data, output_file, dataset, target_lang, output_dir)
         raise
-
-    finally:
-        progress_bar.close()
 
     logger.info(
         f"Translation complete. Translated {len(translated_data.samples)} samples."
