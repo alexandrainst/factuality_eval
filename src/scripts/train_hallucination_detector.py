@@ -16,7 +16,13 @@ from dotenv import load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from lettucedetect import HallucinationDataset
 from lettucedetect.datasets.hallucination_dataset import HallucinationData
-from lettucedetect.models.evaluator import evaluate_model, print_metrics
+from lettucedetect.models.evaluator import (
+    evaluate_detector_char_level,
+    evaluate_model,
+    evaluate_model_example_level,
+    print_metrics,
+)
+from lettucedetect.models.inference import HallucinationDetector
 from lettucedetect.models.trainer import Trainer
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
@@ -34,7 +40,8 @@ from factuality_eval.dataset_generation import (
 )
 from factuality_eval.logging_utils import capture_stdio_to_file, header, log
 from factuality_eval.train import format_dataset_to_ragtruth
-
+import torch
+torch.set_float32_matmul_precision("high")
 load_dotenv()
 logger = logging.getLogger("train_hallucination_detector")
 
@@ -151,6 +158,9 @@ def main(config: DictConfig) -> None:
                 answers=answers,
                 intensities=intensities,
                 model=config.models.hallu_gen_model,
+                reasoning_effort=getattr(
+                    config.models, "hallu_gen_reasoning_effort", None
+                ),
                 output_jsonl_path=Path(
                     "data", "final", f"{target_dataset_name}-{config.language}.jsonl"
                 ),
@@ -193,27 +203,28 @@ def main(config: DictConfig) -> None:
         )
         ragtruth_train_ds = Dataset.from_list(ragtruth_train)
         ragtruth_test_ds = Dataset.from_list(ragtruth_test)
+        
+        if config.multiwikiqa.enable==True:
+            train_dataset = concatenate_datasets([synthetic_train, ragtruth_train_ds])
+            test_dataset = concatenate_datasets([synthetic_test, ragtruth_test_ds])
+            logger.info(
+                f"Combined dataset: {len(train_dataset)} train "
+                f"({len(synthetic_train)} synthetic + {len(ragtruth_train)} ragtruth), "
+                f"{len(test_dataset)} test "
+                f"({len(synthetic_test)} synthetic + {len(ragtruth_test)} ragtruth)"
+            )
+        else:
+            train_dataset = ragtruth_train_ds
+            test_dataset = ragtruth_test_ds
+            logger.info(
+                logger.info("No wiki in config; training on synthetic data only.")
+            )
+    else:
+        logger.info("No ragtruth.path in config; training on synthetic data only.")
+        train_dataset = synthetic_train
+        test_dataset = synthetic_test
 
-    # ------------------------------------------------------------------
-    # 3. Combine enabled sources
-    # ------------------------------------------------------------------
-    train_parts = [ds for ds in (synthetic_train, ragtruth_train_ds) if ds is not None]
-    test_parts = [ds for ds in (synthetic_test, ragtruth_test_ds) if ds is not None]
-    train_dataset = (
-        concatenate_datasets(train_parts) if len(train_parts) > 1 else train_parts[0]
-    )
-    test_dataset = (
-        concatenate_datasets(test_parts) if len(test_parts) > 1 else test_parts[0]
-    )
-    log(
-        f"Combined dataset: {len(train_dataset)} train "
-        f"({len(synthetic_train) if synthetic_train is not None else 0} synthetic + "
-        f"{len(ragtruth_train_ds) if ragtruth_train_ds is not None else 0} ragtruth), "
-        f"{len(test_dataset)} test "
-        f"({len(synthetic_test) if synthetic_test is not None else 0} synthetic + "
-        f"{len(ragtruth_test_ds) if ragtruth_test_ds is not None else 0} ragtruth)",
-        level=logging.INFO,
-    )
+
 
     # Shuffle the combined train/test datasets so RAGTruth and synthetic
     # MultiWikiQA examples are interleaved. This is done *after* the
@@ -233,15 +244,43 @@ def main(config: DictConfig) -> None:
         tokenizer=tokenizer, label_pad_token_id=-100
     )
 
+    max_length = config.training.max_length
+
+    def _fits_in_max_length(example: dict) -> bool:
+        # Mirror HallucinationDataset's tokenization (prompt + answer as a pair,
+        # with special tokens) but without truncation, so we can drop samples
+        # whose context would otherwise be silently truncated.
+        encoded = tokenizer(
+            example["prompt"],
+            example["answer"],
+            truncation=False,
+            add_special_tokens=True,
+            return_attention_mask=False,
+            return_token_type_ids=False,
+        )
+        return len(encoded["input_ids"]) <= max_length
+
+    train_before = len(train_dataset)
+    test_before = len(test_dataset)
+    train_dataset = train_dataset.filter(_fits_in_max_length)
+    test_dataset = test_dataset.filter(_fits_in_max_length)
+    logger.info(
+        f"Filtered samples exceeding max_length={max_length}: "
+        f"train {train_before} -> {len(train_dataset)} "
+        f"({train_before - len(train_dataset)} dropped), "
+        f"test {test_before} -> {len(test_dataset)} "
+        f"({test_before - len(test_dataset)} dropped)"
+    )
+
     train_hallu_dataset = HallucinationDataset(
         generate_lettucedetect_hallucination_samples(train_dataset),
         tokenizer,
-        max_length=config.training.max_length,
+        max_length=max_length,
     )
     test_hallu_dataset = HallucinationDataset(
         generate_lettucedetect_hallucination_samples(test_dataset),
         tokenizer,
-        max_length=config.training.max_length,
+        max_length=max_length,
     )
 
     train_loader = DataLoader(
@@ -257,19 +296,44 @@ def main(config: DictConfig) -> None:
         collate_fn=data_collator,
     )
 
-    # Naming: encode which sources were used so different combinations don't
-    # overwrite each other in the output dir / hub repo.
-    sources = []
-    if config.multiwikiqa.enable:
-        sources.append("mwqa")
-    if config.ragtruth.enable:
-        sources.append("ragtruth")
-    suffix = "-" + "+".join(sources)
+    # Naming: include "+ragtruth" suffix so combined-vs-synthetic-only models
+    # don't overwrite each other in the output dir / hub repo.
+    if config.get("ragtruth", None) and config.ragtruth.get("enable", False):
+        suffix = "-with-ragtruth" if config.multiwikiqa.get("enable", False) else "-only-ragtruth"
+    else:
+        suffix = ""
+
     model_save_path = (
         f"{config.training.output_dir}/"
         f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}{suffix}"
     )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def _run_full_evaluation(eval_model: AutoModelForTokenClassification) -> None:
+        """Evaluate at token, example, and span (char) level — matches LettuceDetect paper."""
+        eval_model.eval()
+
+        logger.info("\n---- Token-level ----")
+        print_metrics(evaluate_model(eval_model, test_loader, device))
+
+        logger.info("\n---- Example-level (any hallucinated token => hallucinated example) ----")
+        print_metrics(evaluate_model_example_level(eval_model, test_loader, device))
+
+        logger.info("\n---- Span / char-level (overlap with gold spans) ----")
+        # HallucinationDetector reloads from disk, so point it at the saved model.
+        detector = HallucinationDetector(
+            method="transformer",
+            model_path=model_save_path,
+            trust_remote_code=True,
+        )
+        test_samples = generate_lettucedetect_hallucination_samples(test_dataset)
+        char_metrics = evaluate_detector_char_level(detector, test_samples)
+        logger.info(
+            f"  Precision: {char_metrics['precision']:.4f}  "
+            f"Recall: {char_metrics['recall']:.4f}  "
+            f"F1: {char_metrics['f1']:.4f}"
+        )
+
     if os.path.exists(model_save_path) and os.path.isdir(model_save_path):
         header("Evaluating existing checkpoint", color="light_blue", level=logging.INFO)
         log(f"Loading existing model from {model_save_path}", level=logging.INFO)
@@ -278,8 +342,8 @@ def main(config: DictConfig) -> None:
         )
         model.to(device)
 
-        metrics = evaluate_model(model, test_loader, device)
-        print_metrics(metrics)
+        logger.info("\nEvaluating...")
+        _run_full_evaluation(model)
 
     else:
         model = AutoModelForTokenClassification.from_pretrained(
@@ -299,6 +363,14 @@ def main(config: DictConfig) -> None:
         header("Fine-tuning", color="light_blue", level=logging.INFO)
         log("Starting training...", level=logging.INFO)
         trainer.train()
+
+        # Re-load the best checkpoint (Trainer saves the best-F1 model to save_path)
+        # and run the full multi-level evaluation on it.
+        best_model = AutoModelForTokenClassification.from_pretrained(
+            model_save_path, trust_remote_code=True, use_safetensors=True
+        ).to(device)
+        logger.info("\nFinal evaluation on best checkpoint:")
+        _run_full_evaluation(best_model)
 
         if config.training.push_to_hub:
             header("Pushing to hub", color="light_blue", level=logging.INFO)

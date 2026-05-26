@@ -1,11 +1,13 @@
 """Automatic generation of hallucination datasets."""
 
 import hashlib
+import inspect
 import json
 import logging
 import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import wraps
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +16,93 @@ from lettucedetect import HallucinationSample
 from tqdm.auto import tqdm
 
 logger = logging.getLogger(__name__)
+
+
+def _patch_openai_create_with_reasoning_effort(
+    create_fn, reasoning_effort: str
+):
+    """Wrap an OpenAI create callable to inject reasoning_effort by default."""
+    if inspect.iscoroutinefunction(create_fn):
+
+        @wraps(create_fn)
+        async def _wrapped_async(*args, **kwargs):
+            kwargs.setdefault("reasoning_effort", reasoning_effort)
+            return await create_fn(*args, **kwargs)
+
+        return _wrapped_async
+
+    @wraps(create_fn)
+    def _wrapped_sync(*args, **kwargs):
+        kwargs.setdefault("reasoning_effort", reasoning_effort)
+        return create_fn(*args, **kwargs)
+
+    return _wrapped_sync
+
+
+def _configure_generator_reasoning_effort(generator, reasoning_effort: str | None) -> None:
+    """Inject reasoning_effort into rag_fact_checker OpenAI calls from this repo.
+
+    This avoids patching external packages while letting us control reasoning effort
+    for GPT reasoning models used in hallucination generation.
+    """
+    if not reasoning_effort:
+        return
+
+    rag = getattr(generator, "rag", None)
+    if rag is None:
+        logger.warning(
+            "Could not configure reasoning effort=%r because generator.rag is missing.",
+            reasoning_effort,
+        )
+        return
+
+    components = [
+        getattr(rag, "answer_generator", None),
+        getattr(rag, "reference_generator", None),
+        getattr(rag, "fact_checker", None),
+        getattr(rag, "triplet_generator", None),
+    ]
+
+    patched_count = 0
+    for component in components:
+        if component is None:
+            continue
+        for client_attr in ("model", "async_model"):
+            client = getattr(component, client_attr, None)
+            completions = getattr(getattr(client, "chat", None), "completions", None)
+            create_fn = getattr(completions, "create", None)
+            if create_fn is None:
+                continue
+            if getattr(create_fn, "_factuality_reasoning_patched", False):
+                continue
+            try:
+                wrapped = _patch_openai_create_with_reasoning_effort(
+                    create_fn=create_fn,
+                    reasoning_effort=reasoning_effort,
+                )
+                setattr(wrapped, "_factuality_reasoning_patched", True)
+                setattr(completions, "create", wrapped)
+                patched_count += 1
+            except Exception as e:
+                logger.warning(
+                    "Failed to patch %s.%s create() with reasoning effort %r: %s",
+                    component.__class__.__name__,
+                    client_attr,
+                    reasoning_effort,
+                    e,
+                )
+
+    if patched_count == 0:
+        logger.warning(
+            "No OpenAI create() call sites were patched for reasoning effort=%r.",
+            reasoning_effort,
+        )
+    else:
+        logger.info(
+            "Configured reasoning effort=%r for %d OpenAI call sites.",
+            reasoning_effort,
+            patched_count,
+        )
 
 
 def load_qa_data(
@@ -136,6 +225,7 @@ def generate_hallucinations_from_qa_data(
     model: str,
     output_jsonl_path: Path | None,
     temperature: float | None = None,
+    reasoning_effort: str | None = None,
     max_workers: int = 8,
 ) -> Dataset:
     """Generate hallucinations from given QA data.
@@ -157,6 +247,10 @@ def generate_hallucinations_from_qa_data(
         temperature:
             The temperature to use for the model during generation. If None, the
             default temperature is used. Defaults to None.
+        reasoning_effort:
+            Optional OpenAI reasoning effort for reasoning-capable models
+            (e.g. ``"low"``, ``"medium"``, ``"high"``). If None, API defaults
+            are used.
         max_workers:
             Number of parallel threads to use for generation. Defaults to 8.
 
@@ -168,6 +262,9 @@ def generate_hallucinations_from_qa_data(
     from lettucedetect import HallucinationGenerator
 
     generator = HallucinationGenerator(model=model, temperature=temperature)
+    _configure_generator_reasoning_effort(
+        generator=generator, reasoning_effort=reasoning_effort
+    )
     records: list[dict] = list()
 
     # Load the existing dataset if it exists

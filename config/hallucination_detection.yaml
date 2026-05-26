@@ -26,18 +26,21 @@ save_dataset_to_file: false
 
 training:
   output_dir: models
-  batch_size: 1
-  epochs: 10
+  batch_size: 16
+  epochs: 5
   learning_rate: 1e-5
   weight_decay: 0.01
   push_to_hub: False
-  max_length: 4096
+  max_length: 8192
 
 models:
   hallu_detect_model: mmBERT-small
   pretrained_model: jhu-clsp/mmBERT-small
   eval_model: Qwen/Qwen3-0.6B
   hallu_gen_model: gpt-5-mini
+  # Optional reasoning effort for OpenAI reasoning-capable models.
+  # Examples: low, medium, high. Null means API default.
+  hallu_gen_reasoning_effort: low
 
 language: da
 
@@ -46,8 +49,26 @@ generation:
   max_new_tokens: 256
 
 ragtruth:
-  path: data/processed/ragtruth_da/ragtruth_data_da.json
+  path: data/processed/ragtruth_${language}/ragtruth_data_${language}.json
   enable: true
 
 multiwikiqa:
   enable: true
+
+manual_annotation:
+  dataset_path: data/final/ground_truth_evaluation_dataset.jsonl
+  detector_model_dir: null   # null = auto-resolve from models/ then HF Hub
+  port_from_backup: true
+  language: da
+  n_samples_target: 100
+  ragtruth:
+    enable: true
+    path: data/processed/ragtruth_${language}/ragtruth_data_${language}.json
+    splits: [test]
+    task_types: [QA]
+    n_samples: 100
+    seed: 42
+    # When true, populate human_hallucinated_parts / human_annotation_status
+    # from the RAGTruth gold labels so the rows count as annotated immediately.
+    preload_human_annotations: true
+

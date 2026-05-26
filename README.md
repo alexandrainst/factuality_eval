@@ -112,13 +112,13 @@ uv run src/scripts/detect_hallucinations.py language=da models.eval_model=Qwen/Q
 Generate a JSONL dataset containing generated answers and hallucinated token spans:
 
 ```bash
-uv run src/scripts/generate_hallucination_dataset.py language=da models.eval_model=Qwen/Qwen3-0.6B
+uv run src/scripts/ground_truth/generate_hallucination_dataset.py language=da models.eval_model=Qwen/Qwen3-0.6B
 ```
 
 Evaluate a trained hallucination detector against token-level ground-truth labels:
 
 ```bash
-uv run src/scripts/evaluate_ground_truth.py language=da
+uv run src/scripts/ground_truth/evaluate_ground_truth.py language=da
 ```
 
 ## Data and Outputs
@@ -163,3 +163,59 @@ make docs
 - `tests/`: automated tests.
 - `research/`: background notes and literature references.
 - `models/`: local model checkpoints.
+
+## Ground-Truth Evaluation Conclusion
+
+On the current human-annotated set (185 rows), the trained detector and the
+LLM judge show different trade-offs. The detector aligns better with human token
+labels overall (token-level kappa 0.420 vs 0.288) and achieves higher token F1
+than the LLM judge (0.448 vs 0.334). The LLM judge, however, runs with very high
+recall and reaches better example-level and span-overlap F1, indicating that it
+flags most hallucinations but with more false positives.
+
+| Metric (annotated set, n=185) | detector | llm judge |
+| --- | ---: | ---: |
+| Token Precision | 0.371 | 0.206 |
+| Token Recall | 0.564 | 0.887 |
+| Token F1 | 0.448 | 0.334 |
+| Span F1 (char-overlap) | 0.309 | 0.407 |
+| Example F1 (any-token) | 0.364 | 0.544 |
+| Token-level Cohen's kappa vs human | 0.420 | 0.288 |
+
+Performance also depends on source data: the detector is much stronger on
+RAGTruth-derived examples, while the LLM judge is stronger on MultiWikiQA-derived
+examples. In practice, this suggests using the detector when precise token-level
+agreement with human annotations is the primary goal, and using the LLM judge
+when high-recall screening is preferred. For the full breakdown (including CIs
+and per-source metrics), see [`analysis/human_evaluation.md`](analysis/human_evaluation.md).
+
+## Danish Setup Comparison: Wiki vs RAGTruth
+
+Recent Danish experiments compare three training regimes:
+
+- Wiki + RAGTruth (synthetic MultiWikiQA + translated RAGTruth)
+- Wiki only (synthetic MultiWikiQA)
+- RAGTruth only (translated RAGTruth)
+
+The table below summarizes the reported detector results from the runs on
+2026-05-20 (plus the corresponding RAGTruth-only final checkpoint evaluation):
+
+| Setup | Train/Test size after filtering | Token P/R/F1 | Token AUROC | Example P/R/F1 | Example AUROC | Span P/R/F1 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Wiki + RAGTruth | 21187 / 4243 | 0.695 / 0.590 / 0.638 | 0.787 | 0.868 / 0.821 / 0.844 | 0.942 | 0.649 / 0.536 / 0.587 |
+| Wiki only | 6245 / 1565 | 0.832 / 0.943 / 0.884 | 0.882 | 0.981 / 0.994 / 0.987 | 0.995 | 0.795 / 0.918 / 0.852 |
+| RAGTruth only | 14942 / 2678 | 0.607 / 0.436 / 0.507 | 0.712 | 0.743 / 0.727 / 0.735 | 0.868 | 0.584 / 0.434 / 0.498 |
+
+Key observations:
+
+- Wiki-only is strongest on its own synthetic-style evaluation split, with the
+  highest token/example/span scores.
+- Adding RAGTruth increases dataset diversity and improves human-alignment on
+  RAGTruth-like examples, but lowers aggregate benchmark scores on the mixed
+  test set relative to wiki-only.
+- RAGTruth-only is the hardest setting for this model family: high precision on
+  supported tokens remains, while hallucinated-token recall drops.
+- The setups are not strictly apples-to-apples: each model is evaluated on a
+  different test distribution and class balance. Use this comparison to read
+  trade-offs, not as a single absolute ranking.
+- The highest correlation with human-annotated datasets was achieved by including the RAGTruth dataset.
