@@ -1,4 +1,4 @@
-# Factuality Evaluation of LLMs
+# Faithful Evaluation of LLMs
 
 ______________________________________________________________________
 [![Code Coverage](https://img.shields.io/badge/Coverage-48%25-orange.svg)](https://github.com/alexandrainst/factuality_eval/tree/main/tests)
