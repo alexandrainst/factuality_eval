@@ -40,7 +40,7 @@ from factuality_eval.dataset_generation import (
 )
 from factuality_eval.logging_utils import capture_stdio_to_file, header, log
 from factuality_eval.train import format_dataset_to_ragtruth
-import torch
+
 torch.set_float32_matmul_precision("high")
 load_dotenv()
 logger = logging.getLogger("train_hallucination_detector")
@@ -203,8 +203,8 @@ def main(config: DictConfig) -> None:
         )
         ragtruth_train_ds = Dataset.from_list(ragtruth_train)
         ragtruth_test_ds = Dataset.from_list(ragtruth_test)
-        
-        if config.multiwikiqa.enable==True:
+
+        if config.multiwikiqa.enable:
             train_dataset = concatenate_datasets([synthetic_train, ragtruth_train_ds])
             test_dataset = concatenate_datasets([synthetic_test, ragtruth_test_ds])
             logger.info(
@@ -305,7 +305,7 @@ def main(config: DictConfig) -> None:
 
     model_save_path = (
         f"{config.training.output_dir}/"
-        f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}{suffix}"
+        f"{config.models.hallu_detect_model}-{target_dataset_name}{suffix}-{config.language}"
     )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -372,14 +372,14 @@ def main(config: DictConfig) -> None:
         logger.info("\nFinal evaluation on best checkpoint:")
         _run_full_evaluation(best_model)
 
-        if config.training.push_to_hub:
-            header("Pushing to hub", color="light_blue", level=logging.INFO)
-            hub_repo_id = (
-                f"{config.hub_organisation}/"
-                f"{config.models.hallu_detect_model}-{target_dataset_name}-{config.language}{suffix}"
-            )
-            model.push_to_hub(repo_id=hub_repo_id, private=config.private)
-            tokenizer.push_to_hub(repo_id=hub_repo_id, private=config.private)
+    if config.training.push_to_hub:
+        header("Pushing to hub", color="light_blue", level=logging.INFO)
+        hub_repo_id = (
+            f"{config.hub_organisation}/"
+            f"{config.models.hallu_detect_model}-{target_dataset_name}{suffix}-{config.language}"
+        )
+        model.push_to_hub(repo_id=hub_repo_id, private=config.private)
+        tokenizer.push_to_hub(repo_id=hub_repo_id, private=config.private)
 
 
 if __name__ == "__main__":

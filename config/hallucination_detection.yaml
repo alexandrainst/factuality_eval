@@ -30,7 +30,7 @@ training:
   epochs: 5
   learning_rate: 1e-5
   weight_decay: 0.01
-  push_to_hub: False
+  push_to_hub: True
   max_length: 8192
 
 models:
