@@ -122,9 +122,6 @@ ignore = [
 "src/scripts/generate_hallucination_dataset.py" = [
     "E501",
 ]
-"src/scripts/train_hallucination_detector.py" = [
-    "E501",
-]
 
 [tool.ruff.lint.isort]
 split-on-trailing-comma = false

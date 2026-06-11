@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import re
 import time
 from pathlib import Path
@@ -569,17 +570,14 @@ async def run_translation(
     last_save_time = start_time
 
     limits = httpx.Limits(
-        max_connections=max_workers * 2,
-        max_keepalive_connections=max_workers,
+        max_connections=max_workers * 2, max_keepalive_connections=max_workers
     )
     timeout = httpx.Timeout(60.0)
     semaphore = asyncio.Semaphore(max_workers)
 
     try:
         async with httpx.AsyncClient(
-            headers=client_config["headers"],
-            timeout=timeout,
-            limits=limits,
+            headers=client_config["headers"], timeout=timeout, limits=limits
         ) as http_client:
             for i in range(0, total_samples, batch_size):
                 if test and i > 0:
@@ -658,10 +656,7 @@ def save_progress(
 
 
 def push_translated_data_to_hub(
-    translated_data: HallucinationData,
-    repo_id: str,
-    config_name: str,
-    private: bool,
+    translated_data: HallucinationData, repo_id: str, config_name: str, private: bool
 ) -> None:
     """Push translated hallucination data to Hugging Face Hub.
 
@@ -688,15 +683,9 @@ def push_translated_data_to_hub(
     ]
 
     dataset = Dataset.from_list(rows)
-    dataset.push_to_hub(
-        repo_id=repo_id,
-        config_name=config_name,
-        private=private,
-    )
+    dataset.push_to_hub(repo_id=repo_id, config_name=config_name, private=private)
     logger.info(
-        "Pushed translated dataset to hub: %s (config=%s)",
-        repo_id,
-        config_name,
+        "Pushed translated dataset to hub: %s (config=%s)", repo_id, config_name
     )
 
 
@@ -715,7 +704,9 @@ def push_test_subset_to_hub(
     :param private: Whether to keep dataset private on Hub
     :param n: Maximum number of test samples to upload
     """
-    test_samples = [s for s in translated_data.samples if s.split == "test"][:n]
+    samples = translated_data.samples[:]
+    random.shuffle(samples)
+    test_samples = [s for s in samples if s.split == "test"][:n]
     if not test_samples:
         logger.warning("No test samples available; skipping Hub upload.")
         return
@@ -735,10 +726,7 @@ def push_test_subset_to_hub(
 
     dataset = Dataset.from_list(rows)
     dataset.push_to_hub(
-        repo_id=repo_id,
-        config_name=config_name,
-        split="train",
-        private=private,
+        repo_id=repo_id, config_name=config_name, split="test", private=private
     )
     logger.info(
         "Pushed %d test samples to hub: %s (config=%s)",
@@ -960,7 +948,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--target-lang",
         type=str,
-        default="DE",
+        default="DA",
         help="Target language code (e.g., EN, DE, FR, etc.)",
     )
     parser.add_argument(

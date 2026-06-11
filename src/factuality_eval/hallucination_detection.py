@@ -31,18 +31,42 @@ def detect_hallucinations(
         return {"predict_answers": [], "ground_truth": []}
 
     detector = HallucinationDetector(
-        method="transformer", model_path=model, device_map="auto", torch_dtype="auto"
+        method="transformer",
+        model_path=model,
+        device_map="auto",
+        torch_dtype="auto",
+        max_length=8192,
+    )
+
+    tokenizer = detector.detector.tokenizer
+    max_length = detector.detector.max_length
+
+    has_hallucinated_parts = "hallucinated_parts" in dataset.column_names
+    hallucinated_parts = (
+        dataset["hallucinated_parts"]
+        if has_hallucinated_parts
+        else [None] * len(dataset)
     )
 
     predict_answers = []
     all_hallucinated_parts = []
-    for prompt, answer in zip(dataset["prompt"], dataset["answer"]):
+    for prompt, answer, hallucinated_part in zip(
+        dataset["prompt"], dataset["answer"], hallucinated_parts
+    ):
+        answer_token_count = len(tokenizer.encode(answer, add_special_tokens=False))
+        if answer_token_count >= max_length:
+            logger.warning(
+                "Skipping sample: answer has %d tokens, which exceeds the detector's "
+                "max_length of %d.",
+                answer_token_count,
+                max_length,
+            )
+            continue
+
         # Use the detector to predict if the answer is hallucinated
         predict_answer = detector.predict_prompt(prompt=prompt, answer=answer)
         predict_answers.append(predict_answer)
-
-    if "hallucinated_parts" in dataset.column_names:
-        for hallucinated_part in dataset["hallucinated_parts"]:
+        if has_hallucinated_parts:
             all_hallucinated_parts.append(hallucinated_part)
 
     data_dict: dict[str, list] = defaultdict(list)
