@@ -1,4 +1,6 @@
-"""Translate hallucination datasets between languages while preserving span labels."""
+"""Translate hallucination datasets between languages while preserving span labels.
+From https://github.com/KRLabsOrg/LettuceDetect/blob/main/scripts/translate/translate.py
+"""
 
 import argparse
 import asyncio
@@ -694,46 +696,67 @@ def push_test_subset_to_hub(
     repo_id: str,
     config_name: str,
     private: bool,
-    n: int = 1000,
+    n: int = 2048,
+    validation_n: int = 256,
 ) -> None:
-    """Push a test-only subset (up to ``n`` samples) of translated data to the Hub.
+    """Push test and validation subsets of translated data to the Hub.
 
     :param translated_data: Translated samples to filter and push
     :param repo_id: Target Hugging Face dataset repo id
     :param config_name: Dataset config/subset name (typically language code)
     :param private: Whether to keep dataset private on Hub
     :param n: Maximum number of test samples to upload
+    :param validation_n: Maximum number of validation samples to upload
     """
     samples = translated_data.samples[:]
     random.shuffle(samples)
+
+    def _to_rows(items: list[HallucinationSample]) -> list[dict[str, Any]]:
+        return [
+            {
+                "prompt": sample.prompt,
+                "answer": sample.answer,
+                "labels": sample.labels,
+                "split": sample.split,
+                "task_type": sample.task_type,
+                "dataset": sample.dataset,
+                "language": sample.language,
+            }
+            for sample in items
+        ]
+
     test_samples = [s for s in samples if s.split == "test"][:n]
-    if not test_samples:
-        logger.warning("No test samples available; skipping Hub upload.")
-        return
+    if test_samples:
+        dataset = Dataset.from_list(_to_rows(test_samples))
+        dataset.push_to_hub(
+            repo_id=repo_id, config_name=config_name, split="test", private=private
+        )
+        logger.info(
+            "Pushed %d test samples to hub: %s (config=%s)",
+            len(test_samples),
+            repo_id,
+            config_name,
+        )
+    else:
+        logger.warning("No test samples available; skipping test split upload.")
 
-    rows = [
-        {
-            "prompt": sample.prompt,
-            "answer": sample.answer,
-            "labels": sample.labels,
-            "split": sample.split,
-            "task_type": sample.task_type,
-            "dataset": sample.dataset,
-            "language": sample.language,
-        }
-        for sample in test_samples
-    ]
-
-    dataset = Dataset.from_list(rows)
-    dataset.push_to_hub(
-        repo_id=repo_id, config_name=config_name, split="test", private=private
-    )
-    logger.info(
-        "Pushed %d test samples to hub: %s (config=%s)",
-        len(test_samples),
-        repo_id,
-        config_name,
-    )
+    # RAGTruth only ships train/test splits, so carve the validation split from train.
+    validation_samples = [s for s in samples if s.split == "train"][:validation_n]
+    if validation_samples:
+        dataset = Dataset.from_list(_to_rows(validation_samples))
+        dataset.push_to_hub(
+            repo_id=repo_id, config_name=config_name, split="val", private=private
+        )
+        logger.info(
+            "Pushed %d validation samples to hub: %s (config=%s)",
+            len(validation_samples),
+            repo_id,
+            config_name,
+        )
+    else:
+        logger.warning(
+            "No validation samples available; skipping val split upload."
+        )
 
 
 def main(
@@ -752,7 +775,8 @@ def main(
     private: bool = True,
     push_test_subset: bool = False,
     test_subset_repo_id: str | None = None,
-    test_subset_size: int = 1000,
+    test_subset_size: int = 2048,
+    validation_subset_size: int = 256,
 ) -> None:
     """Translates the preprocessed data using parallel processing.
 
@@ -772,6 +796,7 @@ def main(
     :param push_test_subset: Whether to also push a test-only subset to the Hub
     :param test_subset_repo_id: Optional explicit repo id for the test subset
     :param test_subset_size: Maximum number of test samples in the subset
+    :param validation_subset_size: Maximum number of validation samples in the subset
     """
     # Set up directories
     input_dir = Path(input_dir)
@@ -842,6 +867,7 @@ def main(
                 config_name=target_lang.lower(),
                 private=private,
                 n=test_subset_size,
+                validation_n=validation_subset_size,
             )
         return
 
@@ -917,6 +943,7 @@ def main(
             config_name=target_lang.lower(),
             private=private,
             n=test_subset_size,
+            validation_n=validation_subset_size,
         )
 
 
@@ -1014,6 +1041,15 @@ if __name__ == "__main__":
         default=1000,
         help="Maximum number of test samples to include in the test subset (default: 1000)",
     )
+    parser.add_argument(
+        "--validation-subset-size",
+        type=int,
+        default=256,
+        help=(
+            "Maximum number of validation samples to include in the test subset "
+            "(default: 256)"
+        ),
+    )
     args = parser.parse_args()
     main(
         Path(args.input_dir),
@@ -1032,4 +1068,5 @@ if __name__ == "__main__":
         args.push_test_subset,
         args.test_subset_repo_id,
         args.test_subset_size,
+        args.validation_subset_size,
     )
