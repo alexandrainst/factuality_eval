@@ -71,7 +71,7 @@ setup-git:
 	@git config --local user.email "${GIT_EMAIL}"
 
 add-repo-to-git:
-	@if [ ! "$(shell git status --short)" = "" ] && [ "$(shell git --no-pager log --all | sed 's/`//g')" = "" ]; then \
+	@if [ -n "$$(git status --short)" ] && [ -z "$$(git --no-pager log --all 2>/dev/null)" ]; then \
 		git add .; \
 		git commit --quiet -m "Initial commit"; \
 	fi

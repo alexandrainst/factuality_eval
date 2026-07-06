@@ -11,9 +11,9 @@ services:
     working_dir: /workspace
     volumes:
       - ./:/workspace
-      - opencode-config:/home/alex-admin/.config/opencode
-      - uv-cache:/home/alex-admin/.cache/uv
-      - uv-python:/home/alex-admin/.local/share/uv/python
+      - opencode-config:/home/user/.config/opencode
+      - uv-cache:/home/user/.cache/uv
+      - uv-python:/home/user/.local/share/uv/python
       - workspace-venv:/workspace/.venv
 
 volumes:
