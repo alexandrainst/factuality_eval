@@ -26,7 +26,8 @@ save_dataset_to_file: false
 
 training:
   output_dir: models
-  batch_size: 16
+  batch_size: 4
+  gradient_checkpointing: true
   epochs: 5
   learning_rate: 1e-5
   weight_decay: 0.01
@@ -59,7 +60,7 @@ eval_dataset:
   answer_key: answer
 
 ragtruth:
-  path: data/processed/ragtruth_${language}/ragtruth_data_${language}.json
+  id: alexandrainst/ragtruth-translated-hallucinations
   enable: true
 
 multiwikiqa:

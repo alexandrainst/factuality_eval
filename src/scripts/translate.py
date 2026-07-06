@@ -154,9 +154,11 @@ def translate_text(
         translation_prompt = (
             TRANSLATION_ANSWER
             if prompt
-            else TRANSLATION_PROMPT_DATA2TXT
-            if task_type == "Data2txt"
-            else TRANSLATION_PROMPT
+            else (
+                TRANSLATION_PROMPT_DATA2TXT
+                if task_type == "Data2txt"
+                else TRANSLATION_PROMPT
+            )
         )
         translation_prompt = translation_prompt.format(
             source_lang=source_lang, target_lang=target_lang, text=text

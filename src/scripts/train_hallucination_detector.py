@@ -4,10 +4,14 @@ Usage:
     uv run src/scripts/train_hallucination_detector.py <config_key>=<config_value> ...
 """
 
-import json
+import gc
 import logging
 import os
 from pathlib import Path
+
+# Reduce CUDA fragmentation on small (8GB) GPUs. Must be set before torch
+# initialises the CUDA allocator. setdefault so an explicit env override wins.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import hydra
 import torch
@@ -15,7 +19,6 @@ from datasets import Dataset, concatenate_datasets, load_dataset
 from dotenv import load_dotenv
 from hydra.core.hydra_config import HydraConfig
 from lettucedetect import HallucinationDataset
-from lettucedetect.datasets.hallucination_dataset import HallucinationData
 from lettucedetect.models.evaluator import (
     evaluate_detector_char_level,
     evaluate_model,
@@ -46,50 +49,43 @@ load_dotenv()
 logger = logging.getLogger("train_hallucination_detector")
 
 
-def load_ragtruth_translated(path: Path, language: str) -> tuple[list, list]:
-    """Load a translated RAGTruth file and split into train/test using RAGTruth's native splits.
+def load_ragtruth_translated(dataset_id: str, language: str) -> tuple[list, list]:
+    """Load translated RAGTruth from the Hugging Face Hub and split by native RAGTruth split.
 
-    The file is expected to be a HallucinationData JSON produced by
-    LettuceDetect's translate.py. Each sample has a `split` field
-    ("train" or "test") inherited from the original RAGTruth.
+    The dataset (e.g. ``alexandrainst/ragtruth-translated-hallucinations``) has one
+    config per language, each with a single ``train`` split; the original RAGTruth
+    train/test partition lives in the ``split`` column.
 
     Args:
-        path: Path to the translated ragtruth_data_<lang>.json file.
-        language: Target language code, used to filter and tag samples.
+        dataset_id: Hugging Face dataset id, one config per language.
+        language: Target language code, used as the config name and sample tag.
 
     Returns:
         Tuple of (train_samples, test_samples), each a list of sample dicts
         in RAGTruth format compatible with generate_lettucedetect_hallucination_samples.
     """
-    if not path.exists():
-        raise FileNotFoundError(f"Translated RAGTruth file not found: {path}")
-
-    data = HallucinationData.from_json(json.loads(path.read_text()))
+    ds = load_dataset(dataset_id, name=language, split="train")
 
     train_samples, test_samples = [], []
-    for sample in data.samples:
-        # Defensive: skip samples whose language doesn't match (mixed-language files)
-        if sample.language and sample.language.lower() != language.lower():
-            continue
-        # Convert HallucinationSample to the dict shape your other code expects
+    for row in ds:
         sample_dict = {
-            "prompt": sample.prompt,
-            "answer": sample.answer,
-            "labels": sample.labels,
-            "split": sample.split,
-            "task_type": sample.task_type,
-            "dataset": sample.dataset,
-            "language": sample.language,
+            "prompt": row["prompt"],
+            "answer": row["answer"],
+            "labels": row["labels"],
+            "split": row["split"],
+            "task_type": row["task_type"],
+            "dataset": row["dataset"],
+            "language": row["language"],
         }
-        if sample.split == "train":
+        if row["split"] == "train":
             train_samples.append(sample_dict)
-        elif sample.split == "test":
+        elif row["split"] == "test":
             test_samples.append(sample_dict)
         else:
-            logger.warning(f"Unknown split '{sample.split}' on sample, skipping.")
+            logger.warning(f"Unknown split '{row['split']}' on sample, skipping.")
 
     log(
-        f"Loaded translated RAGTruth ({language}): "
+        f"Loaded translated RAGTruth ({language}) from {dataset_id}: "
         f"{len(train_samples)} train, {len(test_samples)} test",
         level=logging.INFO,
     )
@@ -197,14 +193,14 @@ def main(config: DictConfig) -> None:
     ragtruth_test_ds: Dataset | None = None
     if config.ragtruth.enable:
         header("Loading translated RAGTruth", color="light_blue", level=logging.INFO)
-        ragtruth_path = Path(config.ragtruth.path)
         ragtruth_train, ragtruth_test = load_ragtruth_translated(
-            ragtruth_path, language=config.language
+            config.ragtruth.id, language=config.language
         )
         ragtruth_train_ds = Dataset.from_list(ragtruth_train)
         ragtruth_test_ds = Dataset.from_list(ragtruth_test)
 
         if config.multiwikiqa.enable:
+            assert synthetic_train is not None and synthetic_test is not None
             train_dataset = concatenate_datasets([synthetic_train, ragtruth_train_ds])
             test_dataset = concatenate_datasets([synthetic_test, ragtruth_test_ds])
             logger.info(
@@ -216,15 +212,11 @@ def main(config: DictConfig) -> None:
         else:
             train_dataset = ragtruth_train_ds
             test_dataset = ragtruth_test_ds
-            logger.info(
-                logger.info("No wiki in config; training on synthetic data only.")
-            )
+            logger.info("No wiki in config; training on RAGTruth data only.")
     else:
-        logger.info("No ragtruth.path in config; training on synthetic data only.")
+        logger.info("RAGTruth disabled in config; training on synthetic data only.")
         train_dataset = synthetic_train
         test_dataset = synthetic_test
-
-
 
     # Shuffle the combined train/test datasets so RAGTruth and synthetic
     # MultiWikiQA examples are interleaved. This is done *after* the
@@ -299,7 +291,11 @@ def main(config: DictConfig) -> None:
     # Naming: include "+ragtruth" suffix so combined-vs-synthetic-only models
     # don't overwrite each other in the output dir / hub repo.
     if config.get("ragtruth", None) and config.ragtruth.get("enable", False):
-        suffix = "-with-ragtruth" if config.multiwikiqa.get("enable", False) else "-only-ragtruth"
+        suffix = (
+            "-with-ragtruth"
+            if config.multiwikiqa.get("enable", False)
+            else "-only-ragtruth"
+        )
     else:
         suffix = ""
 
@@ -308,6 +304,15 @@ def main(config: DictConfig) -> None:
         f"{config.models.hallu_detect_model}-{target_dataset_name}{suffix}-{config.language}"
     )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    detector_device = (
+        torch.device("cuda:1")
+        if torch.cuda.is_available() and torch.cuda.device_count() > 1
+        else device
+    )
+    log(
+        f"CUDA available: {torch.cuda.is_available()} — using device: {device}",
+        level=logging.INFO,
+    )
 
     def _run_full_evaluation(eval_model: AutoModelForTokenClassification) -> None:
         """Evaluate at token, example, and span (char) level — matches LettuceDetect paper."""
@@ -316,7 +321,9 @@ def main(config: DictConfig) -> None:
         logger.info("\n---- Token-level ----")
         print_metrics(evaluate_model(eval_model, test_loader, device))
 
-        logger.info("\n---- Example-level (any hallucinated token => hallucinated example) ----")
+        logger.info(
+            "\n---- Example-level (any hallucinated token => hallucinated example) ----"
+        )
         print_metrics(evaluate_model_example_level(eval_model, test_loader, device))
 
         logger.info("\n---- Span / char-level (overlap with gold spans) ----")
@@ -325,6 +332,7 @@ def main(config: DictConfig) -> None:
             method="transformer",
             model_path=model_save_path,
             trust_remote_code=True,
+            device=detector_device,
         )
         test_samples = generate_lettucedetect_hallucination_samples(test_dataset)
         char_metrics = evaluate_detector_char_level(detector, test_samples)
@@ -344,11 +352,19 @@ def main(config: DictConfig) -> None:
 
         logger.info("\nEvaluating...")
         _run_full_evaluation(model)
+        model_to_push = model
 
     else:
         model = AutoModelForTokenClassification.from_pretrained(
             config.models.pretrained_model, num_labels=2, trust_remote_code=True
         )
+
+        # Gradient checkpointing trades ~20-30% speed for a large drop in
+        # activation memory — the main OOM driver at max_length=8192 on 8GB GPUs.
+        if config.training.get("gradient_checkpointing", True):
+            model.config.use_cache = False
+            model.gradient_checkpointing_enable()
+            log("Gradient checkpointing enabled.", level=logging.INFO)
 
         trainer = Trainer(
             model=model,
@@ -364,6 +380,15 @@ def main(config: DictConfig) -> None:
         log("Starting training...", level=logging.INFO)
         trainer.train()
 
+        # Drop optimizer state + training-time model copy off the GPU before
+        # loading the best checkpoint — avoids stacking multiple model copies
+        # on one card (OOM on 8GB GPUs). Push now uses best_model, so `model`
+        # is no longer needed.
+        del trainer, model
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         # Re-load the best checkpoint (Trainer saves the best-F1 model to save_path)
         # and run the full multi-level evaluation on it.
         best_model = AutoModelForTokenClassification.from_pretrained(
@@ -371,6 +396,7 @@ def main(config: DictConfig) -> None:
         ).to(device)
         logger.info("\nFinal evaluation on best checkpoint:")
         _run_full_evaluation(best_model)
+        model_to_push = best_model
 
     if config.training.push_to_hub:
         header("Pushing to hub", color="light_blue", level=logging.INFO)
@@ -378,7 +404,7 @@ def main(config: DictConfig) -> None:
             f"{config.hub_organisation}/"
             f"{config.models.hallu_detect_model}-{target_dataset_name}{suffix}-{config.language}"
         )
-        model.push_to_hub(repo_id=hub_repo_id, private=config.private)
+        model_to_push.push_to_hub(repo_id=hub_repo_id, private=config.private)
         tokenizer.push_to_hub(repo_id=hub_repo_id, private=config.private)
 
 
