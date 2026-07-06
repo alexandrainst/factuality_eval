@@ -505,6 +505,7 @@ dependencies = [
     { name = "termcolor" },
     { name = "tiktoken" },
     { name = "timm" },
+    { name = "torch" },
 ]
 
 [package.dev-dependencies]
@@ -543,6 +544,7 @@ requires-dist = [
     { name = "termcolor", specifier = ">=2.4.0" },
     { name = "tiktoken", specifier = ">=0.11.0" },
     { name = "timm", specifier = ">=1.0.24" },
+    { name = "torch", specifier = "==2.8.0" },
 ]
 
 [package.metadata.requires-dev]
