@@ -1,0 +1,4 @@
+[tools]
+node = "lts"
+"npm:@anthropic-ai/claude-code" = "latest"
+"npm:opencode-ai" = "latest"

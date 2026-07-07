@@ -112,3 +112,18 @@ type-check:  ## Type-check the project
 		--check-untyped-defs
 
 check: lint format type-check  ## Lint, format, and type-check the code
+
+build-ground-truth:  ## Generate fresh detector predictions for the ground-truth dataset (Danish)
+	@uv run python src/scripts/ground_truth/build_ground_truth_dataset.py
+
+judge-ground-truth:  ## Fill in LLM-judge spans on the ground-truth dataset
+	@uv run python src/scripts/ground_truth/llm_judge_ground_truth.py
+
+upgrade-ground-truth:  ## Backfill human-annotation schema fields on the ground-truth dataset
+	@uv run python src/scripts/ground_truth/upgrade_ground_truth_schema.py
+
+annotate:  ## Launch the Streamlit annotation UI
+	@uv run streamlit run src/scripts/ground_truth/annotate_ground_truth.py
+
+evaluate-against-human:  ## Score detector and LLM-judge against the human annotations
+	@uv run python src/scripts/ground_truth/evaluate_against_human.py

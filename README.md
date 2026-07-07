@@ -1,4 +1,4 @@
-# Factuality Evaluation of LLMs
+# Faithful Evaluation of LLMs
 
 ______________________________________________________________________
 [![Code Coverage](https://img.shields.io/badge/Coverage-48%25-orange.svg)](https://github.com/alexandrainst/factuality_eval/tree/main/tests)
@@ -7,169 +7,215 @@ ______________________________________________________________________
 [![LastCommit](https://img.shields.io/github/last-commit/alexandrainst/factuality_eval)](https://github.com/alexandrainst/factuality_eval/commits/main)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.0-4baaaa.svg)](https://github.com/alexandrainst/factuality_eval/blob/main/CODE_OF_CONDUCT.md)
 
-## Literature Review
+This repository contains tools for evaluating factuality and hallucination
+behaviour in large language models. The current focus is a multilingual
+token-level hallucination detector trained with LettuceDetect on synthetic
+MultiWikiQA hallucinations, optionally mixed with translated RAGTruth examples.
 
-### Evaluation Tools
+The project supports three main workflows:
 
-| Paper title | Authors | Affiliation | Published | Code | Summary | Comments | Languages | Tool |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| OpenFactCheck: A Unified Framework for Factuality Evaluation of LLMs | Iqbal, H., Wang, Y., Wang, M., Georgiev, G., Geng, J., Gurevych, I., & Nakov, P.  | MBZUAI (Mohamed bin Zayed University of Artificial Intelligence) | 2024-08 | <https://github.com/mbzuai-nlp/openfactcheck> | OpenFactCheck has 3 modules: \n\n- RESPONSEEVAL: customize fact-checking system and assess the factuality of all claims in an input document\n- LLMEVAL: assess overall factuality of an LLM\n- CHECKEREVAL: evaluate automatic fact-checking systems | They created two datasets: [FactQA](https://raw.githubusercontent.com/hasaniqbal777/OpenFactCheck/main/src/openfactcheck/templates/llm/questions.csv) (6480 questions) and [FactBench](https://raw.githubusercontent.com/hasaniqbal777/OpenFactCheck/main/src/openfactcheck/templates/factchecker/claims.jsonl) (4507 claims).  | English, Urdu | OpenFactCheck |
-| Loki: An Open-Source Tool for Fact Verification | Li, H., Han, X., Wang, H., Wang, Y., Wang, M., Xing, R., ... & Baldwin | LibrAI, MBZUAI, Monash University, The University of Melbourne | 2024-10 | <https://github.com/Libr-AI/OpenFactVerification> |  | <https://loki.librai.tech/> | Multilingual | Loki |
-|  |  |  |  |  |  |  |  | FactScore |
-|  |  |  |  | <https://www.comet.com/site/blog/selfcheckgpt-for-llm-evaluation/> |  | A blackbox hallucination detection method that relies solely on stochastic sampling of model responses. The core intuition of their method is that factually accurate responses are typically consistent and frequent, whereas hallucinated outputs tend to vary and contradict each other. |  | SelfCheckGPT |
-| Long-form factuality in large language models |  |  |  |  |  |  |  | LongForm SAFE |
-|  |  |  |  |  |  | Not open-source |  | Perplexity fact checker |
-| Hallucination to Truth: A Review of Fact-Checking and Factuality\n\nEvaluation in Large Language Models | Rahman, S. S., Islam, M. A., Alam, M. M., Zeba, M., Rahman, M. A., Chowa, S. S., ... & Azam, S. | United International University (Bangladesh),  Daffodil International University (Bangladesh), Charles Darwin University (Australia) | 2025-08 |  |  |  |  |  |
-| FACTTEST: FACTUALITY TESTING IN LARGE  LANGUAGE MODELS WITH FINITE-SAMPLE AND  DISTRIBUTION-FREE GUARANTEES | Fan Nie1 Xiaotian Hou2 Shuhang Lin2 James Zou1 Huaxiu Yao3 Linjun Zhang | Stanford University, 2Rutgers University, 3UNC-Chapel Hill | 2024-11 |  | Used to "finetune" models to not answer if the answer is likely to be false. |  |  |  |
-| Seq vs Seq: An Open Suite of Paired Encoders and Decoders |  |  |  |  | TinyLettuce is used to have a dataset consisting of hallunications and correct responses.\n\n*"**The Problem**: Training robust hallucination detection models requires large datasets of both correct and hallucinated responses. Manually creating such datasets is expensive and time-consuming.*\n\n***Our Solution****: LettuceDetect's synthetic data generation pipeline can generate realistic hallucinations from factual content."* |  |  |  |
-| Hallucination Risk Calculator & Prompt Re‑engineering Toolkit (OpenAI‑only) |  |  |  | <https://hassana.io/readme.html> | Calculate the risk of hallucination based on a prompt.\n\nBasically just entropy calculation?\n\nProblem is, which prompts should we supply? |  |  |  |
-| (Im)possibility of Automated Hallucination Detection in\n\nLarge Language Models |  |  |  |  | Not possible if trained only on correct samples (duh) |  |  |  |
-| HaluEval: A Large-Scale Hallucination Evaluation Benchmark for Large Language Models |  |  |  | <https://github.com/RUCAIBox/HaluEval> | Many citations |  |  |  |
+- Generate synthetic hallucination-labelled QA data.
+- Fine-tune a token-classification model to detect hallucinated spans.
+- Generate answers from an evaluation model and estimate hallucination rates.
 
-### Evaluation Benchmarks and Datasets
+## Training Pipeline
 
-| Paper title | Authors | Affiliation | Date | Code | Summary/comments | Dataset |
+The detector is trained as a token-classification model. MultiWikiQA question-answer
+pairs are split into faithful and hallucinated examples. The hallucinated examples
+are created with LettuceDetect's `HallucinationGenerator`, using hallucination
+intensities sampled from a clipped Beta distribution. The resulting token-level
+labels are used to fine-tune `jhu-clsp/mmBERT-small` with LettuceDetect's trainer.
+
+Translated RAGTruth data can be added to the training mix with the Hydra config
+flags `ragtruth.enable` and `multiwikiqa.enable`.
+
+![Training pipeline: MultiWikiQA + Beta-sampled hallucination intensities feed LettuceDetect's HallucinationGenerator to produce a synthetic dataset, which fine-tunes mmBERT-small into a token-level hallucination classifier.](diagram.png)
+
+Background reading and design notes are kept separately in
+[`research/README.md`](research/README.md).
+
+## Installation
+
+The project uses Python 3.11 and `uv` for dependency management.
+
+```bash
+make install
+```
+
+After installation, activate the virtual environment:
+
+```bash
+source .venv/bin/activate
+```
+
+If you only need to install dependencies without the interactive setup, run:
+
+```bash
+uv sync --all-extras --python 3.11
+```
+
+Some workflows need external credentials:
+
+- Set `OPENAI_API_KEY` when using OpenAI-backed generation models such as
+  `gpt-5-mini` or `openai/<model-name>`.
+- Log in to Hugging Face with `huggingface-cli login` when loading private
+  datasets/models or pushing generated datasets and checkpoints.
+
+## Configuration
+
+The main Hydra config is [`config/hallucination_detection.yaml`](config/hallucination_detection.yaml).
+Important settings include:
+
+- `language`: target language code, for example `da`, `en`, or `de`.
+- `base_dataset`: the Hugging Face QA dataset and field names.
+- `models.hallu_gen_model`: model used to generate synthetic hallucinations.
+- `models.pretrained_model`: base encoder used for token classification.
+- `models.eval_model`: model whose answers should be evaluated.
+- `ragtruth.enable` and `multiwikiqa.enable`: training data sources.
+- `training`: output directory, batch size, epochs, learning rate, and hub upload settings.
+- `generation.max_examples`: maximum number of examples to generate or evaluate.
+
+Hydra values can be overridden from the command line:
+
+```bash
+uv run src/scripts/train_hallucination_detector.py language=en training.epochs=3 testing=true
+```
+
+## Common Workflows
+
+Generate a synthetic hallucination dataset and push it to the configured Hugging
+Face Hub repository:
+
+```bash
+uv run src/scripts/generate_dataset.py language=da
+```
+
+Train or evaluate the hallucination detector:
+
+```bash
+uv run src/scripts/train_hallucination_detector.py language=da
+```
+
+Run the detector on gold answers to establish a baseline hallucination rate:
+
+```bash
+uv run src/scripts/baseline.py language=da
+```
+
+Generate answers from `models.eval_model` and evaluate them with the trained
+hallucination detector:
+
+```bash
+uv run src/scripts/detect_hallucinations.py language=da models.eval_model=Qwen/Qwen3-0.6B
+```
+
+Generate a JSONL dataset containing generated answers and hallucinated token spans:
+
+```bash
+uv run src/scripts/ground_truth/generate_hallucination_dataset.py language=da models.eval_model=Qwen/Qwen3-0.6B
+```
+
+Evaluate a trained hallucination detector against token-level ground-truth labels:
+
+```bash
+uv run src/scripts/ground_truth/evaluate_ground_truth.py language=da
+```
+
+## Data and Outputs
+
+Generated files are written under `data/` when the relevant workflow is run. Common
+outputs include:
+
+- `data/final/*`: generated QA answers and hallucination-labelled JSONL files.
+- `models/*`: locally trained hallucination detector checkpoints.
+- Hydra run directories and logs for script executions.
+
+Large generated datasets, model checkpoints, and local run outputs are not intended
+to be edited by hand.
+
+## Development
+
+Run the test suite:
+
+```bash
+make test
+```
+
+Run linting, formatting, and type checks:
+
+```bash
+make check
+```
+
+Serve the documentation locally:
+
+```bash
+make docs
+```
+
+## Project Structure
+
+- `config/`: Hydra configuration.
+- `src/factuality_eval/`: reusable dataset generation, model generation, training,
+  prompt, and hallucination-detection utilities.
+- `src/scripts/`: executable workflows.
+- `src/prompts/`: language-specific QA prompt templates.
+- `tests/`: automated tests.
+- `research/`: background notes and literature references.
+- `models/`: local model checkpoints.
+
+## Ground-Truth Evaluation Conclusion
+
+On the current human-annotated set (185 rows), the trained detector and the
+LLM judge show different trade-offs. The detector aligns better with human token
+labels overall (token-level kappa 0.420 vs 0.288) and achieves higher token F1
+than the LLM judge (0.448 vs 0.334). The LLM judge, however, runs with very high
+recall and reaches better example-level and span-overlap F1, indicating that it
+flags most hallucinations but with more false positives.
+
+| Metric (annotated set, n=185) | detector | llm judge |
+| --- | ---: | ---: |
+| Token Precision | 0.371 | 0.206 |
+| Token Recall | 0.564 | 0.887 |
+| Token F1 | 0.448 | 0.334 |
+| Span F1 (char-overlap) | 0.309 | 0.407 |
+| Example F1 (any-token) | 0.364 | 0.544 |
+| Token-level Cohen's kappa vs human | 0.420 | 0.288 |
+
+Performance also depends on source data: the detector is much stronger on
+RAGTruth-derived examples, while the LLM judge is stronger on MultiWikiQA-derived
+examples. In practice, this suggests using the detector when precise token-level
+agreement with human annotations is the primary goal, and using the LLM judge
+when high-recall screening is preferred. For the full breakdown (including CIs
+and per-source metrics), see [`analysis/human_evaluation.md`](analysis/human_evaluation.md).
+
+## Danish Setup Comparison: Wiki vs RAGTruth
+
+Recent Danish experiments compare three training regimes:
+
+- Wiki + RAGTruth (synthetic MultiWikiQA + translated RAGTruth)
+- Wiki only (synthetic MultiWikiQA)
+- RAGTruth only (translated RAGTruth)
+
+The table below summarizes the reported detector results from the runs on
+2026-05-20 (plus the corresponding RAGTruth-only final checkpoint evaluation):
+
+| Setup | Train/Test size after filtering | Token P/R/F1 | Token AUROC | Example P/R/F1 | Example AUROC | Span P/R/F1 |
 | --- | --- | --- | --- | --- | --- | --- |
-|  |  |  |  |  |  | Snowball |
-|  |  |  |  |  |  | SelfAware |
-|  |  |  |  |  |  | FreshQA |
-|  |  |  |  |  |  | FacTool |
-|  |  |  |  |  |  | FELM |
-|  |  |  |  |  |  | Factcheck-Bench |
-|  |  |  |  |  |  | FactScore-Bio |
-|  |  |  |  |  | Human annotations | LLM-AGGREFACT |
-|  |  |  |  |  | Binary error detection | ReaLMistake |
-|  |  |  |  |  | Compute the ratio of factually supported sentences to the total response | **LEAF Fact-check Score** |
-|  |  |  |  |  | Measures the overlap between human-used and model-used knowledge | Knowledge F1 |
-|  |  |  |  |  | evaluates how much original content remains intact after hallucination correction | Presevation score |
-|  |  |  |  |  | Human annotations | LLM-AGGREFACT |
-|  |  |  |  |  | Binary error detection | ReaLMistake |
-|  |  |  |  |  | Compute the ratio of factually supported sentences to the total response | **LEAF Fact-check Score** |
-|  |  |  |  |  | Measures the overlap between human-used and model-used knowledge | Knowledge F1 |
-|  |  |  |  |  | evaluates how much original content remains intact after hallucination correction | Presevation score |
-|  |  |  |  |  | HotpotQA is a  released question-answering dataset that involves multi-hop reasoning over\n\nmultiple paragraphs of information to produce an answer. A successful model must not only report\n\nanswers as yes/no or a span within the text but also identify supporting facts. | HotpotQA |
-|  |  |  |  |  |  | SimpleQA |
-|  |  |  |  |  | Possibly not public/open. | PersonQA |
-| TRUSTSCORE: REFERENCE-FREE EVALUATION OFLLM RESPONSE TRUSTWORTHINESS | Danna Zheng, Danyang Liu, Mirella Lapata, Jeff Z. Pan | University of Edinburgh,\n\nHuawei Edinburgh Research Centre |  |  |  | TrustScore |
-| Know What You Don't Know: Unanswerable Questions for SQuAD |  |  | 2018-11 | <https://rajpurkar.github.io/SQuAD-explorer/> | Many  | SQuAD |
-|  |  |  |  |  | is **an automatic evaluation metric for factual precision in long-form text generation**. It uses large language models and retrieval to break down generations into atomic facts and then measure the correctness with respect to a knowledge source (like Wikipedia). | FactScore |
+| Wiki + RAGTruth | 21187 / 4243 | 0.695 / 0.590 / 0.638 | 0.787 | 0.868 / 0.821 / 0.844 | 0.942 | 0.649 / 0.536 / 0.587 |
+| Wiki only | 6245 / 1565 | 0.832 / 0.943 / 0.884 | 0.882 | 0.981 / 0.994 / 0.987 | 0.995 | 0.795 / 0.918 / 0.852 |
+| RAGTruth only | 14942 / 2678 | 0.607 / 0.436 / 0.507 | 0.712 | 0.743 / 0.727 / 0.735 | 0.868 | 0.584 / 0.434 / 0.498 |
 
-### Papers from Dan
+Key observations:
 
-[Survey on Factuality in Large Language Models](https://dl.acm.org/doi/10.1145/3742420 "https://dl.acm.org/doi/10.1145/3742420")
-
-[Trustworthiness in Retrieval-Augmented Generation Systems: A Survey](http://arxiv.org/abs/2409.10102 "http://arxiv.org/abs/2409.10102")
-
-[SciTrust: Evaluating the Trustworthiness of Large Language Models for Science](https://ieeexplore.ieee.org/document/10820709 "https://ieeexplore.ieee.org/document/10820709")
-
-[WikiContradict: A Benchmark for Evaluating LLMs on Real-World Knowledge Conflicts from Wikipedia](http://arxiv.org/abs/2406.13805 "http://arxiv.org/abs/2406.13805")
-
-[Identifying Factual Inconsistencies in Summaries: Grounding LLM Inference via Task Taxonomy](http://arxiv.org/abs/2402.12821 "http://arxiv.org/abs/2402.12821")
-
-[Factual consistency evaluation of summarization in the Era of large language models](http://arxiv.org/abs/2402.13758 "http://arxiv.org/abs/2402.13758")
-
-[FENICE: Factuality Evaluation of summarization based on Natural language Inference and Claim Extraction](http://arxiv.org/abs/2403.02270 "http://arxiv.org/abs/2403.02270")
-
-[SIFiD: Reassess Summary Factual Inconsistency Detection with LLM](http://arxiv.org/abs/2403.07557 "http://arxiv.org/abs/2403.07557")
-
-[TofuEval: Evaluating Hallucinations of LLMs on Topic-Focused Dialogue Summarization](http://arxiv.org/abs/2402.13249 "http://arxiv.org/abs/2402.13249")
-
-[Factuality of Large Language Models: A Survey](http://arxiv.org/abs/2402.02420 "http://arxiv.org/abs/2402.02420")
-
-[FactPICO: Factuality Evaluation for Plain Language Summarization of Medical Evidence](http://arxiv.org/abs/2402.11456 "http://arxiv.org/abs/2402.11456")
-
-[TrustScore: Reference-Free Evaluation of LLM Response Trustworthiness](http://arxiv.org/abs/2402.12545 "http://arxiv.org/abs/2402.12545")
-
-## Why are LLMs not factual?
-
-- LLMs do not know what they do not know, sometimes overestimate their capacities and
-  confidently output unknown information, leading to false responses.
-
-## The art of saying "I don't know"
-
-(Check paper from Friday on multiple questionnaires, where it sometimes says it doesn't
-know the answer.)
-
-## Difficulties with evaluating factuality
-
-- Studies assessing language models’ factuality or evaluating whether the methods are
-  effective to mitigate model hallucinations use different datasets and metrics.
-- This makes it difficult to compare, in the same conditions, the factuality of
-   different models as well as to compare the effectiveness of different factuality
-   enhancement approaches.
-
-## Research goals
-
-- Hvad vil vi måle
-- Hvilke metoder vil vi bruge
-- Hvilke dataset er relevante
-
-We don't really care about how factual the LLM's are, but we want to know can we trust
-them. This means that we're not trying to test which LLM is most likeliy to win in
-Jeapordy, however we are more interested in testing which one would lie or cheat in
-Jeapordy. But at the same time, we do not want a metric that will be biased in a way
-that the LLM always answers I dont know, and gets a good score for that.
-
-## Challenges
-
-Metric bias (**I. Augenstein, T. Baldwin, M. Cha, T. Chakraborty, G. L. Ciampaglia, D.
-Corney, R. DiResta, E. Ferrara, S. Hale, A. Halevy et al., “Factuality challenges in the
-era of large language models and opportunities for factchecking,” Nature Machine
-Intelligence, vol. 6, no. 8, pp. 852–863, 2024.)**
-
-Dependence on high quality annotated evidence datasets.
-
-## Overall strategies
-
-Using LLMs themselves as evaluators (LLM-as-a-judge). Often closely just as good as
-humans.
-
-RAG
-
-Human evaluation
-
-Detecting hallucinations in language models is challenging. There are three general
-approaches:
-
-- **Measuring token-level probability distributions** for indications that a model is
-  “confused.” Though sometimes effective, these methods rely on model internals being
-  accessible—which is often not the case when working with hosted LLMs.
-- **Referencing external fact-verification systems**, like a database or document store.
-  These methods are great for RAG-style use-cases, but they are only effective if you
-  have a useful dataset and the infrastructure to use it.
-- **Using LLM-as-a-judge techniques** to assess whether or not a model hallucinated.
-  These techniques are becoming standard in the LLM ecosystem, but as I’ll explain
-  throughout this piece, using them effectively requires a deceptive amount of work.
-
-The problem with many LLM-as-a-Judge techniques is that they tend towards two
-polarities: they are either too simple, using a basic zero-shot approach, or they are
-wildly complex, involving multiple LLMs interacting via multi-turn reasoning.
-
-## Datasets
-
-- HotpotQA
-- SimpleQA
-- PersonQA (possibly not public)
-- SQuAD
-
-## Hallucination
-
-### Definition of hallucinations
-
-Hallucinations are a feature, not a bug. When is a LLM hallucinating, and when is it
-creating?
-
-### Hallucination theory
-
-- Entropy measurements (need output probability distribution)
-- Er der teoretisk grundlag for at man kan teste factuality?
-
-### Hallucination detectors
-
-- Paper: Not possible if trained only on correct samples (duh)
-- SelfCheckGPT: Voting system
-
-### SelfCheckGPT
-
-Check for variance i output af ens model, er det meget stokastisk / random eller
-konvergerer modellen mod det samme svar?
+- Wiki-only is strongest on its own synthetic-style evaluation split, with the
+  highest token/example/span scores.
+- Adding RAGTruth increases dataset diversity and improves human-alignment on
+  RAGTruth-like examples, but lowers aggregate benchmark scores on the mixed
+  test set relative to wiki-only.
+- RAGTruth-only is the hardest setting for this model family: high precision on
+  supported tokens remains, while hallucinated-token recall drops.
+- The setups are not strictly apples-to-apples: each model is evaluated on a
+  different test distribution and class balance. Use this comparison to read
+  trade-offs, not as a single absolute ranking.
+- The highest correlation with human-annotated datasets was achieved by including the RAGTruth dataset.

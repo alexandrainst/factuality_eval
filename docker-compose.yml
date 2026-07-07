@@ -1,0 +1,23 @@
+services:
+  opencode:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # mem_limit: 4G
+    # shm_size: 1G
+    init: true
+    stdin_open: true
+    tty: true
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+      - opencode-config:/home/alex-admin/.config/opencode
+      - uv-cache:/home/alex-admin/.cache/uv
+      - uv-python:/home/alex-admin/.local/share/uv/python
+      - workspace-venv:/workspace/.venv
+
+volumes:
+  opencode-config:
+  uv-cache:
+  uv-python:
+  workspace-venv:

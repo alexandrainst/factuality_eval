@@ -1,17 +1,108 @@
 """Automatic generation of hallucination datasets."""
 
 import hashlib
+import inspect
 import json
 import logging
+import threading
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import wraps
 from pathlib import Path
 
 import numpy as np
 from datasets import Dataset, load_dataset
-from lettucedetect import HallucinationGenerator, HallucinationSample
+from lettucedetect import HallucinationSample
 from tqdm.auto import tqdm
 
 logger = logging.getLogger(__name__)
+
+
+def _patch_openai_create_with_reasoning_effort(
+    create_fn, reasoning_effort: str
+):
+    """Wrap an OpenAI create callable to inject reasoning_effort by default."""
+    if inspect.iscoroutinefunction(create_fn):
+
+        @wraps(create_fn)
+        async def _wrapped_async(*args, **kwargs):
+            kwargs.setdefault("reasoning_effort", reasoning_effort)
+            return await create_fn(*args, **kwargs)
+
+        return _wrapped_async
+
+    @wraps(create_fn)
+    def _wrapped_sync(*args, **kwargs):
+        kwargs.setdefault("reasoning_effort", reasoning_effort)
+        return create_fn(*args, **kwargs)
+
+    return _wrapped_sync
+
+
+def _configure_generator_reasoning_effort(generator, reasoning_effort: str | None) -> None:
+    """Inject reasoning_effort into rag_fact_checker OpenAI calls from this repo.
+
+    This avoids patching external packages while letting us control reasoning effort
+    for GPT reasoning models used in hallucination generation.
+    """
+    if not reasoning_effort:
+        return
+
+    rag = getattr(generator, "rag", None)
+    if rag is None:
+        logger.warning(
+            "Could not configure reasoning effort=%r because generator.rag is missing.",
+            reasoning_effort,
+        )
+        return
+
+    components = [
+        getattr(rag, "answer_generator", None),
+        getattr(rag, "reference_generator", None),
+        getattr(rag, "fact_checker", None),
+        getattr(rag, "triplet_generator", None),
+    ]
+
+    patched_count = 0
+    for component in components:
+        if component is None:
+            continue
+        for client_attr in ("model", "async_model"):
+            client = getattr(component, client_attr, None)
+            completions = getattr(getattr(client, "chat", None), "completions", None)
+            create_fn = getattr(completions, "create", None)
+            if create_fn is None:
+                continue
+            if getattr(create_fn, "_factuality_reasoning_patched", False):
+                continue
+            try:
+                wrapped = _patch_openai_create_with_reasoning_effort(
+                    create_fn=create_fn,
+                    reasoning_effort=reasoning_effort,
+                )
+                setattr(wrapped, "_factuality_reasoning_patched", True)
+                setattr(completions, "create", wrapped)
+                patched_count += 1
+            except Exception as e:
+                logger.warning(
+                    "Failed to patch %s.%s create() with reasoning effort %r: %s",
+                    component.__class__.__name__,
+                    client_attr,
+                    reasoning_effort,
+                    e,
+                )
+
+    if patched_count == 0:
+        logger.warning(
+            "No OpenAI create() call sites were patched for reasoning effort=%r.",
+            reasoning_effort,
+        )
+    else:
+        logger.info(
+            "Configured reasoning effort=%r for %d OpenAI call sites.",
+            reasoning_effort,
+            patched_count,
+        )
 
 
 def load_qa_data(
@@ -55,8 +146,13 @@ def load_qa_data(
 
     if len(ds.keys()) > 1:  # Dataset is already split
         ds = ds[split]
+    elif "train" in ds:
+        ds = ds["train"].train_test_split(test_size=0.2, seed=42)[split]
     else:
-        ds = ds[split].train_test_split(test_size=0.2, seed=42)[split]
+        raise ValueError(
+            "Dataset cannot be split into test and train. Please check if "
+            "'train' is a subset of the dataset."
+        )
 
     logger.info("Preparing dataset...")
     contexts: list[list[str]] = [[ctx] for ctx in ds[context_key]]
@@ -129,6 +225,8 @@ def generate_hallucinations_from_qa_data(
     model: str,
     output_jsonl_path: Path | None,
     temperature: float | None = None,
+    reasoning_effort: str | None = None,
+    max_workers: int = 8,
 ) -> Dataset:
     """Generate hallucinations from given QA data.
 
@@ -149,13 +247,24 @@ def generate_hallucinations_from_qa_data(
         temperature:
             The temperature to use for the model during generation. If None, the
             default temperature is used. Defaults to None.
+        reasoning_effort:
+            Optional OpenAI reasoning effort for reasoning-capable models
+            (e.g. ``"low"``, ``"medium"``, ``"high"``). If None, API defaults
+            are used.
+        max_workers:
+            Number of parallel threads to use for generation. Defaults to 8.
 
     Returns:
         A Dataset containing both original and hallucinated QA pairs.
     """
     logger.info("Generating hallucinations...")
 
+    from lettucedetect import HallucinationGenerator
+
     generator = HallucinationGenerator(model=model, temperature=temperature)
+    _configure_generator_reasoning_effort(
+        generator=generator, reasoning_effort=reasoning_effort
+    )
     records: list[dict] = list()
 
     # Load the existing dataset if it exists
@@ -165,14 +274,25 @@ def generate_hallucinations_from_qa_data(
             records = [json.loads(line.strip()) for line in f if line.strip()]
 
     # Extract the list of hashes for quick lookups
-    hashes = {record["hash"] for record in records}
+    hashes: set[str] = {record["hash"] for record in records}
 
-    for context, question, answer, intensity in zip(
-        tqdm(contexts), questions, answers, intensities
-    ):
+    # Build the list of items that still need to be processed
+    items_to_process = [
+        (context, question, answer, intensity)
+        for context, question, answer, intensity in zip(
+            contexts, questions, answers, intensities
+        )
+        if generate_hash(context=context, question=question, answer=answer)
+        not in hashes
+    ]
+
+    file_lock = threading.Lock()
+    records_lock = threading.Lock()
+
+    def _process_one(item: tuple[list[str], str, str, float]) -> dict | None:
+        """Process a single QA pair and return a record or None to skip."""
+        context, question, answer, intensity = item
         hash_ = generate_hash(context=context, question=question, answer=answer)
-        if hash_ in hashes:
-            continue
 
         # Generate hallucinated answer with specified intensity
         try:
@@ -181,29 +301,44 @@ def generate_hallucinations_from_qa_data(
             )
         except Exception as e:
             logger.error(f"Error during generation: {e}. Skipping...")
+            return None
 
-        hallucinated_labels = get_hallucinated_labels(hallucinated_dict=result)
+        labels_result = get_hallucinated_labels(hallucinated_dict=result)
 
         # Skip samples where labels cannot be reliably determined
-        if hallucinated_labels is None:
-            continue
+        if labels_result is None:
+            return None
 
-        # Save the record
-        record = dict(
+        hallucinated_labels, clean_parts = labels_result
+
+        return dict(
             hash=hash_,
             context=context,
             question=question,
             answer=answer,
             hallucinated_answer=result["hallucinated_answer"],
-            hallucinated_parts=result["hallucinated_parts"],
+            hallucinated_parts=clean_parts,
             hallucinated_labels=hallucinated_labels,
             intensity=intensity,
         )
-        records.append(record)
-        hashes.add(hash_)
-        if output_jsonl_path is not None:
-            with output_jsonl_path.open("a") as f:
-                f.write(json.dumps(record) + "\n")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_process_one, item): item for item in items_to_process
+        }
+        with tqdm(total=len(items_to_process)) as pbar:
+            for future in as_completed(futures):
+                pbar.update(1)
+                record = future.result()
+                if record is None:
+                    continue
+                with records_lock:
+                    records.append(record)
+                    hashes.add(record["hash"])
+                if output_jsonl_path is not None:
+                    with file_lock:
+                        with output_jsonl_path.open("a") as f:
+                            f.write(json.dumps(record) + "\n")
 
     # Remove records where the hallucinated answer is identical to the original answer
     records = [
@@ -255,36 +390,76 @@ def generate_hash(context: list[str], question: str, answer: str) -> str:
     return hashlib.md5((context[0] + question + answer).encode("utf-8")).hexdigest()
 
 
-def get_hallucinated_labels(hallucinated_dict: dict) -> list[dict] | None:
+def get_hallucinated_labels(
+    hallucinated_dict: dict,
+) -> tuple[list[dict], list[str]] | None:
     """Get the hallucinated labels from the generation result.
+
+    Filters out parts that are absent from the hallucinated answer, discards
+    ambiguous parts that appear more than once, and removes redundant parts
+    whose spans are fully overlapped by a longer accepted part (e.g. '2005'
+    and '2008' when '2005/2008' is already labelled).
 
     Args:
         hallucinated_dict:
             The dictionary from the hallucination generator.
 
     Returns:
-        A list of dictionaries with start, end, and label for each hallucinated part,
-        or None if the labels cannot be reliably determined.
+        A tuple of (labels, clean_parts) where labels is a list of dicts with
+        start, end, and label for each accepted hallucinated span and clean_parts
+        is the corresponding filtered list of hallucinated part strings, or None
+        if the labels cannot be reliably determined.
     """
-    hallucinated_labels = []
-    for part in hallucinated_dict["hallucinated_parts"]:
-        answer = hallucinated_dict["hallucinated_answer"]
-        count = answer.count(part)
+    answer = hallucinated_dict["hallucinated_answer"]
+    raw_parts = hallucinated_dict["hallucinated_parts"]
 
-        if count > 1:
-            # Cannot reliably label - discard this sample
+    # First pass: drop parts absent from the answer or ambiguously duplicated.
+    present_parts: list[str] = []
+    for part in raw_parts:
+        count = answer.count(part)
+        if count == 0:
+            logger.warning(
+                f"Skipping hallucinated part {part!r} — not found in answer."
+            )
+        elif count > 1:
             logger.warning(
                 f"Discarding sample - hallucinated part {part!r} appears {count} times "
                 f"in answer, cannot determine which occurrence is hallucinated."
             )
             return None
+        else:
+            present_parts.append(part)
 
+    # Second pass: sort by length descending so longer (more specific) spans take
+    # priority, then skip any span that overlaps with an already-accepted span.
+    present_parts.sort(key=len, reverse=True)
+
+    accepted_spans: list[tuple[int, int]] = []
+    hallucinated_labels: list[dict] = []
+    clean_parts: list[str] = []
+
+    for part in present_parts:
         start = answer.find(part)
-        if start != -1:
-            hallucinated_labels.append(
-                {"start": start, "end": start + len(part), "label": "hallucinated"}
+        end = start + len(part)
+        if any(not (end <= s or start >= e) for s, e in accepted_spans):
+            logger.warning(
+                f"Skipping redundant/overlapping hallucinated part {part!r}."
             )
-    return hallucinated_labels
+            continue
+        accepted_spans.append((start, end))
+        hallucinated_labels.append(
+            {"start": start, "end": end, "label": "hallucinated"}
+        )
+        clean_parts.append(part)
+
+    # Re-sort labels and parts by position in the answer for a natural order.
+    order = sorted(
+        range(len(hallucinated_labels)), key=lambda i: hallucinated_labels[i]["start"]
+    )
+    hallucinated_labels = [hallucinated_labels[i] for i in order]
+    clean_parts = [clean_parts[i] for i in order]
+
+    return hallucinated_labels, clean_parts
 
 
 def generate_lettucedetect_hallucination_samples(

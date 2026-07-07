@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Iterable, cast
@@ -23,6 +24,18 @@ from factuality_eval.dataset_generation import generate_hash
 from factuality_eval.prompt_utils import Lang, PromptUtils
 
 logger = logging.getLogger(__name__)
+
+# Pattern to strip markdown bold/italic markers from model output
+_MD_MARKERS_RE = re.compile(r"(\*{1,3}|_{1,3})(.+?)\1")
+
+
+def _strip_markdown(text: str) -> str:
+    """Remove markdown bold/italic markers from text.
+
+    Replaces ``**bold**``, ``*italic*``, ``***both***`` (and underscore
+    equivalents) with just the inner text.
+    """
+    return _MD_MARKERS_RE.sub(r"\2", text)
 
 
 def generate_single_answer(
@@ -53,30 +66,42 @@ def generate_single_answer(
     prompt = PromptUtils.format_context(list(context), question, lang=lang)
     messages = [{"role": "user", "content": prompt}]
     text = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=False, enable_thinking=False
+        messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
     )
 
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+    input_length = model_inputs["input_ids"].shape[-1]
+    if input_length > 8192:
+        return ""
 
-    # Only include temperature in generation parameters if it's specified
-    generation_kwargs: dict[str, int | float] = {"max_new_tokens": max_new_tokens}
-    if temperature is not None:
+    # Only include temperature when it is strictly positive; otherwise use greedy
+    generation_kwargs: dict[str, int | float | bool] = {
+        "max_new_tokens": max_new_tokens
+    }
+    if temperature is None or temperature <= 0:
+        generation_kwargs["do_sample"] = False
+    else:
         generation_kwargs["temperature"] = temperature
+        generation_kwargs["do_sample"] = True
 
     generated_ids = model.generate(  # type: ignore[operator]
         **model_inputs, **generation_kwargs
     )
-    output_ids: list[int] = cast(torch.Tensor, generated_ids)[0].tolist()
 
-    content = tokenizer.decode(output_ids, skip_special_tokens=False)
+    # Only decode newly generated tokens, excluding the input prompt
+    output_ids = cast(torch.Tensor, generated_ids)[0][input_length:].tolist()
+
+    content = tokenizer.decode(output_ids, skip_special_tokens=True)
 
     # Clear generated content of special tokens
-    if tokenizer.bos_token is not None:
-        content = content.split(tokenizer.bos_token)[-1]
     if "</think>" in content:
         content = content.split("</think>")[-1]
-    content.replace(tokenizer.eos_token, "")
-    content.replace("\n", "")
+    eos_token = tokenizer.eos_token
+    if eos_token:
+        content = content.replace(eos_token, "")
+    for special_token in tokenizer.all_special_tokens:
+        content = content.replace(special_token, "")
+    content = content.strip()
 
     return content
 
@@ -156,11 +181,9 @@ def generate_answers_from_qa_data(
 
     records: list[dict] = list()
 
-    if eval_model.startswith("openai/"):
-        model = None
-        tokenizer = None
-    else:
-        model, tokenizer = load_model_for_generation(eval_model)
+    is_openai_model = eval_model.startswith("openai/")
+    model = None
+    tokenizer = None
 
     # Load the existing dataset if it exists
     if output_jsonl_path is not None and output_jsonl_path.exists():
@@ -179,7 +202,7 @@ def generate_answers_from_qa_data(
             continue
 
         try:
-            if tokenizer is None or model is None:
+            if is_openai_model:
                 answer = generate_single_answer_from_openai(
                     client=OpenAI(),
                     eval_model=eval_model.split("/")[1],
@@ -190,6 +213,8 @@ def generate_answers_from_qa_data(
                     temperature=temperature,
                 )
             else:
+                if tokenizer is None or model is None:
+                    model, tokenizer = load_model_for_generation(eval_model)
                 answer = generate_single_answer(
                     tokenizer=tokenizer,
                     model=model,
@@ -199,9 +224,14 @@ def generate_answers_from_qa_data(
                     max_new_tokens=max_new_tokens,
                     temperature=temperature,
                 )
+
         except Exception as e:
             logger.error(f"Error during generation: {e}. Skipping...")
             continue
+        if len(answer) == 0:
+            continue
+        # Strip markdown bold/italic markers that models sometimes add
+        answer = _strip_markdown(answer)
 
         record = dict(hash=hash_, context=context, question=question, answer=answer)
         records.append(record)
@@ -221,6 +251,19 @@ def generate_answers_from_qa_data(
     return generated_dataset
 
 
+def _build_max_memory() -> dict[int, str] | None:
+    if not torch.cuda.is_available():
+        return None
+    max_memory: dict[int, str] = {}
+    for device_index in range(torch.cuda.device_count()):
+        free_bytes, _total_bytes = torch.cuda.mem_get_info(device_index)
+        free_gib = int((free_bytes / (1024**3)) * 0.95)
+        if free_gib <= 0:
+            continue
+        max_memory[device_index] = f"{free_gib}GiB"
+    return max_memory or None
+
+
 def load_model_for_generation(
     model_name: str,
 ) -> tuple[PreTrainedModel, PreTrainedTokenizerBase]:
@@ -234,8 +277,9 @@ def load_model_for_generation(
         A tuple of (model, tokenizer).
     """
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+    max_memory = _build_max_memory()
     model = AutoModelForCausalLM.from_pretrained(
-        model_name, torch_dtype="auto", device_map="auto"
+        model_name, torch_dtype="auto", device_map="auto", max_memory=max_memory
     )
 
     return model, tokenizer

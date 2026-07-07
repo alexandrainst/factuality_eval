@@ -97,7 +97,8 @@ data/processed/*
 !data/processed/.gitkeep
 data/final/*
 !data/final/.gitkeep
-
+data/ground_truth/*
+!data/ground_truth/.gitkeep
 # Models
 models/*
 !models/.gitkeep

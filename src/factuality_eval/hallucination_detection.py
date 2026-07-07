@@ -21,23 +21,24 @@ def detect_hallucinations(
     Returns:
         A dictionary with the predicted answers and ground truth hallucinated parts.
     """
+    required_columns = {"prompt", "answer"}
+    missing_columns = required_columns.difference(dataset.column_names)
+    if missing_columns:
+        logger.warning(
+            "Skipping hallucination detection. Dataset missing columns: %s",
+            ", ".join(sorted(missing_columns)),
+        )
+        return {"predict_answers": [], "ground_truth": []}
+
     detector = HallucinationDetector(
         method="transformer", model_path=model, device_map="auto", torch_dtype="auto"
     )
 
     predict_answers = []
     all_hallucinated_parts = []
-    for context, question, answer in zip(
-        dataset["context"], dataset["question"], dataset["answer"]
-    ):
+    for prompt, answer in zip(dataset["prompt"], dataset["answer"]):
         # Use the detector to predict if the answer is hallucinated
-        try:
-            predict_answer = detector.predict(
-                context=context, question=question, answer=answer
-            )
-        except Exception as e:
-            logger.error(f"Error during hallucination detection: {e}. Skipping...")
-            continue
+        predict_answer = detector.predict_prompt(prompt=prompt, answer=answer)
         predict_answers.append(predict_answer)
 
     if "hallucinated_parts" in dataset.column_names:
@@ -77,12 +78,14 @@ def evaluate_predicted_answers(hallucinations: dict) -> None:
         no_hallucination_in_answers.append(no_hallucination_in_answer)
         no_tokens_in_answers.append(no_tokens_in_answer)
 
-    hallucination_rate = hallucinated_tokens / total_tokens
+    hallucination_rate = hallucinated_tokens / total_tokens if total_tokens > 0 else 0.0
 
     answers_with_hallucinations = sum([1 for x in no_hallucination_in_answers if x > 0])
 
-    rate_with_hallucinations = answers_with_hallucinations / len(
-        no_hallucination_in_answers
+    rate_with_hallucinations = (
+        answers_with_hallucinations / len(no_hallucination_in_answers)
+        if no_hallucination_in_answers
+        else 0.0
     )
     logger.info("Results ________________________________________")
     logger.info(
