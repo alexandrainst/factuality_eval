@@ -117,9 +117,6 @@ ignore = [
 "src/scripts/train_hallucination_detector.py" = [
     "E501",
 ]
-"src/scripts/translate.py" = [
-    "E501",
-]
 "src/scripts/generate_hallucination_dataset.py" = [
     "E501",
 ]
