@@ -359,13 +359,6 @@ def main(config: DictConfig) -> None:
             config.models.pretrained_model, num_labels=2, trust_remote_code=True
         )
 
-        # Gradient checkpointing trades ~20-30% speed for a large drop in
-        # activation memory — the main OOM driver at max_length=8192 on 8GB GPUs.
-        if config.training.get("gradient_checkpointing", True):
-            model.config.use_cache = False
-            model.gradient_checkpointing_enable()
-            log("Gradient checkpointing enabled.", level=logging.INFO)
-
         trainer = Trainer(
             model=model,
             tokenizer=tokenizer,

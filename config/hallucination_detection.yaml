@@ -27,9 +27,6 @@ save_dataset_to_file: false
 training:
   output_dir: models
   batch_size: 4
-  gradient_checkpointing: true
-  gradient_accumulation_steps: 4   # effective batch = batch_size * this = 16
-  amp: true                        # fp16 on RTX 2070 (Turing), auto-selected
   epochs: 5
   learning_rate: 1e-5
   weight_decay: 0.01
