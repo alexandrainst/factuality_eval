@@ -7,7 +7,6 @@ Usage:
 import gc
 import logging
 import os
-from contextlib import nullcontext
 from pathlib import Path
 
 # Reduce CUDA fragmentation on small (8GB) GPUs. Must be set before torch
@@ -48,122 +47,6 @@ from factuality_eval.train import format_dataset_to_ragtruth
 torch.set_float32_matmul_precision("high")
 load_dotenv()
 logger = logging.getLogger("train_hallucination_detector")
-
-
-class AmpTrainer(Trainer):
-    """Trainer + autocast + gradient accumulation. Same eval/save as parent.
-
-    On RTX 2070 (Turing, cc 7.5) bf16 is only emulated, so we require *native*
-    bf16 and otherwise use hardware-accelerated fp16 + GradScaler.
-    """
-
-    def __init__(
-        self, *args, grad_accum_steps: int = 1, use_amp: bool = True, **kwargs
-    ) -> None:
-        """Initialize AmpTrainer."""
-        super().__init__(*args, **kwargs)
-        self.grad_accum_steps = max(1, grad_accum_steps)
-        self.use_amp = use_amp and self.device.type == "cuda"
-        native_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported(
-            including_emulation=False
-        )
-        self.amp_dtype = torch.bfloat16 if native_bf16 else torch.float16
-        # GradScaler only needed for fp16; bf16 has fp32 range.
-        self.scaler = torch.amp.GradScaler(
-            "cuda", enabled=self.use_amp and self.amp_dtype == torch.float16
-        )
-        if self.use_amp:
-            log(
-                f"AMP enabled: dtype={self.amp_dtype}, "
-                f"grad_accum_steps={self.grad_accum_steps}",
-                level=logging.INFO,
-            )
-
-    def train(self) -> float:
-        """Train the model with AMP and gradient accumulation, evaluating after each epoch."""
-        import time
-        from datetime import timedelta
-
-        from lettucedetect.models.evaluator import evaluate_model, print_metrics
-        from tqdm.auto import tqdm
-
-        best_f1 = 0.0
-        start_time = time.time()
-        print(f"\nStarting training on {self.device}")
-        print(
-            f"Training samples: {len(self.train_loader.dataset)}, "
-            f"Test samples: {len(self.test_loader.dataset)}\n"
-        )
-
-        for epoch in range(self.epochs):
-            epoch_start = time.time()
-            print(f"\nEpoch {epoch + 1}/{self.epochs}")
-            self.model.train()
-            self.optimizer.zero_grad()
-            total_loss, num_batches = 0.0, 0
-            bar = tqdm(self.train_loader, desc="Training", leave=True)
-
-            for step, batch in enumerate(bar):
-                ctx = (
-                    torch.autocast("cuda", dtype=self.amp_dtype)
-                    if self.use_amp
-                    else nullcontext()
-                )
-                with ctx:
-                    outputs = self.model(
-                        batch["input_ids"].to(self.device),
-                        attention_mask=batch["attention_mask"].to(self.device),
-                        labels=batch["labels"].to(self.device),
-                    )
-                    loss = outputs.loss / self.grad_accum_steps
-
-                self.scaler.scale(loss).backward()
-
-                if (step + 1) % self.grad_accum_steps == 0:
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
-                    self.optimizer.zero_grad()
-
-                total_loss += loss.item() * self.grad_accum_steps
-                num_batches += 1
-                bar.set_postfix(
-                    {
-                        "loss": f"{loss.item() * self.grad_accum_steps:.4f}",
-                        "avg_loss": f"{total_loss / num_batches:.4f}",
-                    }
-                )
-
-            # Flush a trailing partial accumulation window.
-            if len(self.train_loader) % self.grad_accum_steps != 0:
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-                self.optimizer.zero_grad()
-
-            avg_loss = total_loss / num_batches
-            epoch_time = time.time() - epoch_start
-            print(
-                f"Epoch {epoch + 1} completed in "
-                f"{timedelta(seconds=int(epoch_time))}. Average loss: {avg_loss:.4f}"
-            )
-
-            print("\nEvaluating...")
-            metrics = evaluate_model(self.model, self.test_loader, self.device)
-            print_metrics(metrics)
-
-            if metrics["hallucinated"]["f1"] > best_f1:
-                best_f1 = metrics["hallucinated"]["f1"]
-                self.model.save_pretrained(self.save_path)
-                self.tokenizer.save_pretrained(self.save_path)
-                print(
-                    f"\n🎯 New best F1: {best_f1:.4f}, model saved at '{self.save_path}'!"
-                )
-
-            print("-" * 50)
-
-        total_time = time.time() - start_time
-        print(f"\nTraining completed in {timedelta(seconds=int(total_time))}")
-        print(f"Best F1 score: {best_f1:.4f}")
-        return best_f1
 
 
 def load_ragtruth_translated(dataset_id: str, language: str) -> tuple[list, list]:
@@ -483,7 +366,7 @@ def main(config: DictConfig) -> None:
             model.gradient_checkpointing_enable()
             log("Gradient checkpointing enabled.", level=logging.INFO)
 
-        trainer = AmpTrainer(
+        trainer = Trainer(
             model=model,
             tokenizer=tokenizer,
             train_loader=train_loader,
@@ -491,8 +374,6 @@ def main(config: DictConfig) -> None:
             epochs=config.training.epochs,
             learning_rate=config.training.learning_rate,
             save_path=model_save_path,
-            grad_accum_steps=config.training.get("gradient_accumulation_steps", 4),
-            use_amp=config.training.get("amp", True),
         )
 
         header("Fine-tuning", color="light_blue", level=logging.INFO)
