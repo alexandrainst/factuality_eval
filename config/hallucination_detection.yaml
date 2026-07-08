@@ -26,11 +26,11 @@ save_dataset_to_file: false
 
 training:
   output_dir: models
-  batch_size: 4
+  batch_size: 16
   epochs: 5
   learning_rate: 1e-5
   weight_decay: 0.01
-  push_to_hub: True
+  push_to_hub: False
   max_length: 8192
 
 models:
