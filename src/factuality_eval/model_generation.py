@@ -95,7 +95,7 @@ def generate_single_answer_from_prompt(
         generation_kwargs["do_sample"] = True
         if top_p is not None:
             generation_kwargs["top_p"] = top_p
-        if top_k is not None:
+        if top_k is not None and top_k > 0:
             generation_kwargs["top_k"] = top_k
 
     generated_ids = model.generate(  # type: ignore[operator]
