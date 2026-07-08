@@ -75,9 +75,16 @@ def generate_single_answer_from_prompt(
         The generated answer.
     """
     messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True, enable_thinking=True
-    )
+    try:
+        text = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True, enable_thinking=True
+        )
+    except TypeError as e:
+        if "enable_thinking" not in str(e):
+            raise
+        text = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
 
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
     input_length = model_inputs["input_ids"].shape[-1]
