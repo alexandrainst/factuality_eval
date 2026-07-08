@@ -1,9 +1,11 @@
 """Shared utilities for the human-in-the-loop ground-truth evaluation pipeline.
 
 Used by:
-- ``src/scripts/ground_truth/build_ground_truth_dataset.py`` — writes detector predictions.
+- ``src/scripts/ground_truth/build_ground_truth_dataset.py`` — writes detector
+  predictions.
 - ``src/scripts/ground_truth/llm_judge_ground_truth.py`` — fills in LLM-judge spans.
-- ``src/scripts/ground_truth/upgrade_ground_truth_schema.py`` — backfills new schema fields.
+- ``src/scripts/ground_truth/upgrade_ground_truth_schema.py`` — backfills new schema
+  fields.
 - ``src/scripts/ground_truth/annotate_ground_truth.py`` — Streamlit annotator.
 - ``src/scripts/ground_truth/evaluate_against_human.py`` — metrics vs human gold.
 
@@ -39,7 +41,7 @@ def write_rows(rows: list[dict[str, Any]], path: Path) -> None:
 
 
 def _atomic_write(rows: list[dict[str, Any]], path: Path) -> None:
-    """Write ``rows`` to ``path`` via ``.tmp`` + ``os.replace`` to avoid partial files."""
+    """Write ``rows`` to ``path`` atomically via ``.tmp`` + ``os.replace``."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w", encoding="utf-8") as f:
@@ -117,9 +119,7 @@ def default_human_fields(num_tokens: int) -> dict[str, Any]:
     }
 
 
-def char_label_spans_to_strings(
-    answer: str, labels: list[dict[str, Any]]
-) -> list[str]:
+def char_label_spans_to_strings(answer: str, labels: list[dict[str, Any]]) -> list[str]:
     """Convert character-offset labels to verbatim substrings of ``answer``.
 
     Each ``label`` is expected to provide integer ``start`` and ``end`` keys

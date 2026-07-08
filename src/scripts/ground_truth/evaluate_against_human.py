@@ -24,7 +24,7 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import hydra
 import numpy as np
@@ -48,7 +48,14 @@ BOOTSTRAP_SEED = 42
 # ---------------------------------------------------------------------------
 
 
-def _row_token_labels(row: dict[str, Any]) -> dict[str, list[int]]:
+class _RowLabels(TypedDict):
+    human: list[int]
+    detector: list[int]
+    llm: list[int]
+    probs: list[float]
+
+
+def _row_token_labels(row: dict[str, Any]) -> "_RowLabels":
     """Return aligned per-token 0/1 labels for human / detector / LLM judge."""
     tokens = row["tokens"]
     human = spans_to_token_labels(tokens, row.get("human_hallucinated_parts", []))
@@ -86,7 +93,9 @@ def _prf(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
     return prec, rec, f1
 
 
-def _char_overlap(pred_text: str, pred_spans: list[str], gold_spans: list[str]) -> tuple[int, int, int]:
+def _char_overlap(
+    pred_text: str, pred_spans: list[str], gold_spans: list[str]
+) -> tuple[int, int, int]:
     """Return (intersection chars, gold chars, pred chars) on the answer text."""
     pred_mask = build_char_mask(pred_text, pred_spans)
     gold_mask = build_char_mask(pred_text, gold_spans)
@@ -115,9 +124,7 @@ def _cohen_kappa(pred: list[int], gold: list[int]) -> float:
 def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Compute all per-system metrics over the supplied annotated rows."""
     # Token-level pooled counts.
-    tok_counts = {
-        sys: dict(tp=0, fp=0, fn=0, tn=0) for sys in ("detector", "llm")
-    }
+    tok_counts = {sys: dict(tp=0, fp=0, fn=0, tn=0) for sys in ("detector", "llm")}
     # Span-level pooled char counts.
     span_counts = {sys: dict(inter=0, gold=0, pred=0) for sys in ("detector", "llm")}
     # Example-level bools.
@@ -130,20 +137,20 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     pooled_detector: list[int] = []
     pooled_llm: list[int] = []
     # Span Jaccard.
-    span_jaccard = {"detector": [], "llm": []}
+    span_jaccard: dict[str, list[float]] = {"detector": [], "llm": []}
 
     for row in rows:
         labels = _row_token_labels(row)
         h = labels["human"]
         d = labels["detector"]
-        l = labels["llm"]
+        l_labels = labels["llm"]
         probs = labels["probs"]
 
         pooled_human.extend(h)
         pooled_detector.extend(d)
-        pooled_llm.extend(l)
+        pooled_llm.extend(l_labels)
 
-        for sys, pred in (("detector", d), ("llm", l)):
+        for sys, pred in (("detector", d), ("llm", l_labels)):
             tp, fp, fn, _ = _confusion(pred, h)
             tn = len(h) - tp - fp - fn
             tok_counts[sys]["tp"] += tp
@@ -160,18 +167,18 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         llm_spans = row.get("llm_hallucinated_parts", []) or []
 
         for sys, spans in (("detector", detector_spans), ("llm", llm_spans)):
-            inter, gold, pred = _char_overlap(answer, spans, human_spans)
+            inter, gold, pred_chars = _char_overlap(answer, spans, human_spans)
             span_counts[sys]["inter"] += inter
             span_counts[sys]["gold"] += gold
-            span_counts[sys]["pred"] += pred
+            span_counts[sys]["pred"] += pred_chars
             # Jaccard per row, ignoring rows where both sides are empty.
-            union = gold + pred - inter
+            union = gold + pred_chars - inter
             if union > 0:
                 span_jaccard[sys].append(inter / union)
 
         ex_human.append(1 if any(h) else 0)
         ex_detector.append(1 if any(d) else 0)
-        ex_llm.append(1 if any(l) else 0)
+        ex_llm.append(1 if any(l_labels) else 0)
         ex_detector_score.append(max(probs) if probs else 0.0)
 
     metrics: dict[str, Any] = {"n_rows": len(rows)}
@@ -187,14 +194,21 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         rec = s["inter"] / s["gold"] if s["gold"] else 0.0
         f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
         metrics[f"span/{sys}"] = dict(
-            precision=prec, recall=rec, f1=f1, **s,
-            jaccard_mean=float(np.mean(span_jaccard[sys])) if span_jaccard[sys] else 0.0,
+            precision=prec,
+            recall=rec,
+            f1=f1,
+            **s,
+            jaccard_mean=(
+                float(np.mean(span_jaccard[sys])) if span_jaccard[sys] else 0.0
+            ),
         )
 
     for sys, ex_pred in (("detector", ex_detector), ("llm", ex_llm)):
         tp, fp, fn, _ = _confusion(ex_pred, ex_human)
         p, r, f = _prf(tp, fp, fn)
-        metrics[f"example/{sys}"] = dict(precision=p, recall=r, f1=f, tp=tp, fp=fp, fn=fn)
+        metrics[f"example/{sys}"] = dict(
+            precision=p, recall=r, f1=f, tp=tp, fp=fp, fn=fn
+        )
 
     metrics["example/detector"]["auroc"] = _auroc(ex_detector_score, ex_human)
 
@@ -360,9 +374,12 @@ def _render_md(metrics: dict[str, Any], ci: dict[str, tuple[float, float]]) -> s
         lines += [
             "## Data quality checks",
             "",
-            f"- Rows with empty detector token output (all rows): **{quality.get('empty_tokens_total', 0)}**",
-            f"- Rows with empty detector token output (annotated): **{quality.get('empty_tokens_annotated', 0)}**",
-            f"- Rows dropped due to token/label length mismatch during scoring: **{quality.get('length_mismatch_annotated', 0)}**",
+            f"- Rows with empty detector token output (all rows): "
+            f"**{quality.get('empty_tokens_total', 0)}**",
+            f"- Rows with empty detector token output (annotated): "
+            f"**{quality.get('empty_tokens_annotated', 0)}**",
+            f"- Rows dropped due to token/label length mismatch during scoring: "
+            f"**{quality.get('length_mismatch_annotated', 0)}**",
             "",
         ]
 
@@ -371,7 +388,9 @@ def _render_md(metrics: dict[str, Any], ci: dict[str, tuple[float, float]]) -> s
         lines += [
             "## Source breakdown (annotated rows)",
             "",
-            "| Source | Rows | Token F1 (detector) | Token F1 (llm) | Span F1 (detector) | Span F1 (llm) | Example F1 (detector) | Example F1 (llm) |",
+            "| Source | Rows | Token F1 (detector) | Token F1 (llm) | "
+            "Span F1 (detector) | Span F1 (llm) | "
+            "Example F1 (detector) | Example F1 (llm) |",
             "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
         for source, sm in sorted(by_source.items()):
@@ -402,11 +421,16 @@ def main(config: DictConfig) -> None:
         raise FileNotFoundError(f"{dataset_path} not found.")
 
     all_rows = read_rows(dataset_path)
-    rows = [r for r in all_rows if r.get("human_annotation_status") == HUMAN_STATUS_ANNOTATED]
+    rows = [
+        r
+        for r in all_rows
+        if r.get("human_annotation_status") == HUMAN_STATUS_ANNOTATED
+    ]
     logger.info(f"Using {len(rows)} of {len(all_rows)} rows (annotated only).")
     if not rows:
         raise SystemExit(
-            "No annotated rows yet — run src/scripts/ground_truth/annotate_ground_truth.py first."
+            "No annotated rows yet — run "
+            "src/scripts/ground_truth/annotate_ground_truth.py first."
         )
 
     metrics = _aggregate(rows)

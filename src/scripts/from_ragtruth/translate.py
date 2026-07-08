@@ -1,5 +1,6 @@
 """Translate hallucination datasets between languages while preserving span labels.
-From https://github.com/KRLabsOrg/LettuceDetect/blob/main/scripts/translate/translate.py
+
+From https://github.com/KRLabsOrg/LettuceDetect/blob/main/scripts/translate/translate.py.
 """
 
 import argparse
@@ -754,9 +755,7 @@ def push_test_subset_to_hub(
             config_name,
         )
     else:
-        logger.warning(
-            "No validation samples available; skipping val split upload."
-        )
+        logger.warning("No validation samples available; skipping val split upload.")
 
 
 def main(

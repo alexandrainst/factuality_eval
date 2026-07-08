@@ -316,7 +316,7 @@ def main(config: DictConfig) -> None:
 
     def _run_full_evaluation(eval_model: AutoModelForTokenClassification) -> None:
         """Evaluate at token, example, and span (char) level — matches LettuceDetect paper."""
-        eval_model.eval()
+        eval_model.eval()  # type: ignore[attr-defined]
 
         logger.info("\n---- Token-level ----")
         print_metrics(evaluate_model(eval_model, test_loader, device))

@@ -107,7 +107,7 @@ def generate_single_answer_from_prompt(
 
     # Decode keeping special tokens so the end-of-reasoning token can be detected,
     # mirroring EuroEval's handling.
-    content = tokenizer.decode(output_ids, skip_special_tokens=False)
+    content = cast(str, tokenizer.decode(output_ids, skip_special_tokens=False))
 
     # Match EuroEval's reasoning handling: keep only the text after the
     # end-of-reasoning token. If the model started reasoning but never emitted the

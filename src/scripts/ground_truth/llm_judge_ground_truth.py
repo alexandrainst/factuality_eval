@@ -47,11 +47,7 @@ _SYSTEM_PROMPT = (
 
 
 def _judge_one(
-    client: OpenAI,
-    model: str,
-    context: list[str] | str,
-    question: str,
-    answer: str,
+    client: OpenAI, model: str, context: list[str] | str, question: str, answer: str
 ) -> dict[str, Any]:
     """Call the LLM judge for a single row and parse the JSON response."""
     context_str = "\n".join(context) if isinstance(context, list) else context
@@ -86,9 +82,7 @@ def _port_from_backup(rows: list[dict[str, Any]], backup_path: Path) -> int:
     if not backup_path.exists():
         logger.info(f"No backup at {backup_path}; skipping port step.")
         return 0
-    backup = {
-        (r.get("hash"), r.get("answer")): r for r in read_rows(backup_path)
-    }
+    backup = {(r.get("hash"), r.get("answer")): r for r in read_rows(backup_path)}
     ported = 0
     for row in rows:
         key = (row.get("hash"), row.get("answer"))
@@ -96,7 +90,9 @@ def _port_from_backup(rows: list[dict[str, Any]], backup_path: Path) -> int:
         if prior is None:
             continue
         if not row.get("llm_explanation") and prior.get("llm_explanation"):
-            row["llm_hallucinated_parts"] = list(prior.get("llm_hallucinated_parts", []))
+            row["llm_hallucinated_parts"] = list(
+                prior.get("llm_hallucinated_parts", [])
+            )
             row["llm_explanation"] = prior.get("llm_explanation", "")
             ported += 1
     logger.info(f"Ported LLM verdicts from backup for {ported} rows.")
