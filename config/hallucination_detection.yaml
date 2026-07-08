@@ -46,10 +46,20 @@ language: da
 
 generation:
   max_examples: 1000
-  max_new_tokens: 256
+  max_new_tokens: 8192
+  temperature: 0.0
+  top_p: 1.0
+  top_k: 0
+
+
+eval_dataset:
+  id: EuroEval/ragtruth-translated-hallucinations-da-mini
+  split: test
+  prompt_key: prompt
+  answer_key: answer
 
 ragtruth:
-  path: data/processed/ragtruth_${language}/ragtruth_data_${language}.json
+  id: alexandrainst/ragtruth-translated-hallucinations
   enable: true
 
 multiwikiqa:
@@ -71,4 +81,3 @@ manual_annotation:
     # When true, populate human_hallucinated_parts / human_annotation_status
     # from the RAGTruth gold labels so the rows count as annotated immediately.
     preload_human_annotations: true
-

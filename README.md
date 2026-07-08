@@ -1,7 +1,7 @@
 # Faithful Evaluation of LLMs
 
 ______________________________________________________________________
-[![Code Coverage](https://img.shields.io/badge/Coverage-48%25-orange.svg)](https://github.com/alexandrainst/factuality_eval/tree/main/tests)
+[![Code Coverage](https://img.shields.io/badge/Coverage-47%25-orange.svg)](https://github.com/alexandrainst/factuality_eval/tree/main/tests)
 [![Documentation](https://img.shields.io/badge/docs-passing-green)](https://alexandrainst.github.io/factuality_eval)
 [![License](https://img.shields.io/github/license/alexandrainst/factuality_eval)](https://github.com/alexandrainst/factuality_eval/blob/main/LICENSE)
 [![LastCommit](https://img.shields.io/github/last-commit/alexandrainst/factuality_eval)](https://github.com/alexandrainst/factuality_eval/commits/main)
@@ -118,7 +118,7 @@ uv run src/scripts/ground_truth/generate_hallucination_dataset.py language=da mo
 Evaluate a trained hallucination detector against token-level ground-truth labels:
 
 ```bash
-uv run src/scripts/ground_truth/evaluate_ground_truth.py language=da
+uv run src/scripts/ground_truth/evaluate_against_ground_truth.py language=da
 ```
 
 ## Data and Outputs

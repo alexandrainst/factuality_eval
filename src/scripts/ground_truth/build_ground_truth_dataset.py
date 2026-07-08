@@ -118,10 +118,7 @@ def _run_detector(
 
 
 def _load_ragtruth_samples(
-    path: Path,
-    language: str,
-    splits: list[str] | None,
-    task_types: list[str] | None,
+    path: Path, language: str, splits: list[str] | None, task_types: list[str] | None
 ) -> list[dict[str, Any]]:
     """Load and filter RAGTruth samples produced by ``preprocess_ragtruth.py``."""
     if not path.exists():
@@ -161,10 +158,7 @@ def _build_ragtruth_rows(
     splits = list(cfg.splits) if cfg.get("splits") else None
     task_types = list(cfg.task_types) if cfg.get("task_types") else None
     samples = _load_ragtruth_samples(
-        path=path,
-        language=config.language,
-        splits=splits,
-        task_types=task_types,
+        path=path, language=config.language, splits=splits, task_types=task_types
     )
     logger.info(
         f"Loaded {len(samples)} RAGTruth samples from {path} "
@@ -286,8 +280,8 @@ def main(config: DictConfig) -> None:
     # happens inside ``port_annotations``.
     prev_by_hash: dict[str, dict[str, Any]] = {}
     if output_path.exists():
-        for prev in read_rows(output_path):
-            prev_by_hash[prev["hash"]] = prev
+        for existing in read_rows(output_path):
+            prev_by_hash[existing["hash"]] = existing
         logger.info(
             f"Loaded {len(prev_by_hash)} existing rows from {output_path} "
             "for annotation porting."
@@ -318,8 +312,7 @@ def main(config: DictConfig) -> None:
             logger.warning(f"No gold answer found for hash {row_hash}")
         if not tokens:
             logger.warning(
-                "Detector returned 0 tokens for multiwikiqa row hash=%s",
-                row_hash,
+                "Detector returned 0 tokens for multiwikiqa row hash=%s", row_hash
             )
         row: dict[str, Any] = {
             "hash": row_hash,
@@ -361,8 +354,7 @@ def main(config: DictConfig) -> None:
         for r in rt_rows:
             if not r.get("tokens"):
                 logger.warning(
-                    "Detector returned 0 tokens for ragtruth row hash=%s",
-                    r.get("hash"),
+                    "Detector returned 0 tokens for ragtruth row hash=%s", r.get("hash")
                 )
         # Deduplicate against MultiWikiQA rows on row hash (RAGTruth hashes are
         # generated from prompt+answer so collisions are essentially impossible,

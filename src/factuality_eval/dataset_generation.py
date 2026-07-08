@@ -6,6 +6,7 @@ import json
 import logging
 import threading
 from collections import defaultdict
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import wraps
 from pathlib import Path
@@ -19,27 +20,29 @@ logger = logging.getLogger(__name__)
 
 
 def _patch_openai_create_with_reasoning_effort(
-    create_fn, reasoning_effort: str
-):
+    create_fn: Callable, reasoning_effort: str
+) -> Callable:
     """Wrap an OpenAI create callable to inject reasoning_effort by default."""
     if inspect.iscoroutinefunction(create_fn):
 
         @wraps(create_fn)
-        async def _wrapped_async(*args, **kwargs):
+        async def _wrapped_async(*args, **kwargs) -> object:  # noqa: ANN002, ANN003
             kwargs.setdefault("reasoning_effort", reasoning_effort)
             return await create_fn(*args, **kwargs)
 
         return _wrapped_async
 
     @wraps(create_fn)
-    def _wrapped_sync(*args, **kwargs):
+    def _wrapped_sync(*args, **kwargs) -> object:  # noqa: ANN002, ANN003
         kwargs.setdefault("reasoning_effort", reasoning_effort)
         return create_fn(*args, **kwargs)
 
     return _wrapped_sync
 
 
-def _configure_generator_reasoning_effort(generator, reasoning_effort: str | None) -> None:
+def _configure_generator_reasoning_effort(
+    generator: object, reasoning_effort: str | None
+) -> None:
     """Inject reasoning_effort into rag_fact_checker OpenAI calls from this repo.
 
     This avoids patching external packages while letting us control reasoning effort
@@ -77,8 +80,7 @@ def _configure_generator_reasoning_effort(generator, reasoning_effort: str | Non
                 continue
             try:
                 wrapped = _patch_openai_create_with_reasoning_effort(
-                    create_fn=create_fn,
-                    reasoning_effort=reasoning_effort,
+                    create_fn=create_fn, reasoning_effort=reasoning_effort
                 )
                 setattr(wrapped, "_factuality_reasoning_patched", True)
                 setattr(completions, "create", wrapped)

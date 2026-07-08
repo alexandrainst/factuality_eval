@@ -36,8 +36,7 @@ from factuality_eval.ground_truth_eval import (
 
 DEFAULT_DATASET_PATH = Path(
     os.environ.get(
-        "FACTUALITY_EVAL_DATASET",
-        "data/final/ground_truth_evaluation_dataset.jsonl",
+        "FACTUALITY_EVAL_DATASET", "data/final/ground_truth_evaluation_dataset.jsonl"
     )
 )
 
@@ -67,7 +66,8 @@ def _filtered_indices(
 ) -> list[int]:
     out = []
     for i, row in enumerate(rows):
-        if status_filter != "all" and row.get("human_annotation_status") != status_filter:
+        status = row.get("human_annotation_status")
+        if status_filter != "all" and status != status_filter:
             continue
         if language and row.get("language", language) != language:
             # Most rows won't have a language field; assume they match.
@@ -94,7 +94,8 @@ def _render_answer(answer: str, spans: list[str], color: str) -> str:
         text = html.escape("".join(buf))
         if escaped_inside:
             out.append(
-                f'<mark style="background-color: {color}; padding: 0 2px;">{text}</mark>'
+                f'<mark style="background-color: {color}; padding: 0 2px;">'
+                f"{text}</mark>"
             )
         else:
             out.append(text)
@@ -108,9 +109,7 @@ def _render_answer(answer: str, spans: list[str], color: str) -> str:
     _flush(inside)
     return (
         '<div style="font-family: serif; font-size: 1.05rem; '
-        'line-height: 1.5; white-space: pre-wrap;">'
-        + "".join(out)
-        + "</div>"
+        'line-height: 1.5; white-space: pre-wrap;">' + "".join(out) + "</div>"
     )
 
 
@@ -120,6 +119,7 @@ def _render_answer(answer: str, spans: list[str], color: str) -> str:
 
 
 def main() -> None:
+    """Run the Streamlit annotation app."""
     st.set_page_config(
         page_title="Hallucination annotator", layout="wide", page_icon="📝"
     )
@@ -136,9 +136,7 @@ def main() -> None:
     # ------------------------------------------------------------- Sidebar
     st.sidebar.header("Filter")
     status_filter = st.sidebar.selectbox(
-        "Status",
-        options=["unannotated", "annotated", "skipped", "all"],
-        index=0,
+        "Status", options=["unannotated", "annotated", "skipped", "all"], index=0
     )
 
     indices = _filtered_indices(rows, status_filter, language=None)
@@ -169,13 +167,16 @@ def main() -> None:
         pos = max(0, pos - 1)
     if col_next.button("Next →", use_container_width=True):
         pos = min(len(indices) - 1, pos + 1)
-    pos = st.sidebar.number_input(
-        f"Position (1-{len(indices)})",
-        min_value=1,
-        max_value=len(indices),
-        value=pos + 1,
-        step=1,
-    ) - 1
+    pos = (
+        st.sidebar.number_input(
+            f"Position (1-{len(indices)})",
+            min_value=1,
+            max_value=len(indices),
+            value=pos + 1,
+            step=1,
+        )
+        - 1
+    )
     st.session_state["pos"] = pos
 
     row_idx = indices[pos]

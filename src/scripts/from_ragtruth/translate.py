@@ -1,10 +1,14 @@
-"""Translate hallucination datasets between languages while preserving span labels."""
+"""Translate hallucination datasets between languages while preserving span labels.
 
-import asyncio
+From https://github.com/KRLabsOrg/LettuceDetect/blob/main/scripts/translate/translate.py.
+"""
+
 import argparse
+import asyncio
 import json
 import logging
 import os
+import random
 import re
 import time
 from pathlib import Path
@@ -569,17 +573,14 @@ async def run_translation(
     last_save_time = start_time
 
     limits = httpx.Limits(
-        max_connections=max_workers * 2,
-        max_keepalive_connections=max_workers,
+        max_connections=max_workers * 2, max_keepalive_connections=max_workers
     )
     timeout = httpx.Timeout(60.0)
     semaphore = asyncio.Semaphore(max_workers)
 
     try:
         async with httpx.AsyncClient(
-            headers=client_config["headers"],
-            timeout=timeout,
-            limits=limits,
+            headers=client_config["headers"], timeout=timeout, limits=limits
         ) as http_client:
             for i in range(0, total_samples, batch_size):
                 if test and i > 0:
@@ -658,10 +659,7 @@ def save_progress(
 
 
 def push_translated_data_to_hub(
-    translated_data: HallucinationData,
-    repo_id: str,
-    config_name: str,
-    private: bool,
+    translated_data: HallucinationData, repo_id: str, config_name: str, private: bool
 ) -> None:
     """Push translated hallucination data to Hugging Face Hub.
 
@@ -688,16 +686,76 @@ def push_translated_data_to_hub(
     ]
 
     dataset = Dataset.from_list(rows)
-    dataset.push_to_hub(
-        repo_id=repo_id,
-        config_name=config_name,
-        private=private,
-    )
+    dataset.push_to_hub(repo_id=repo_id, config_name=config_name, private=private)
     logger.info(
-        "Pushed translated dataset to hub: %s (config=%s)",
-        repo_id,
-        config_name,
+        "Pushed translated dataset to hub: %s (config=%s)", repo_id, config_name
     )
+
+
+def push_test_subset_to_hub(
+    translated_data: HallucinationData,
+    repo_id: str,
+    config_name: str,
+    private: bool,
+    n: int = 2048,
+    validation_n: int = 256,
+) -> None:
+    """Push test and validation subsets of translated data to the Hub.
+
+    :param translated_data: Translated samples to filter and push
+    :param repo_id: Target Hugging Face dataset repo id
+    :param config_name: Dataset config/subset name (typically language code)
+    :param private: Whether to keep dataset private on Hub
+    :param n: Maximum number of test samples to upload
+    :param validation_n: Maximum number of validation samples to upload
+    """
+    samples = translated_data.samples[:]
+    random.shuffle(samples)
+
+    def _to_rows(items: list[HallucinationSample]) -> list[dict[str, Any]]:
+        return [
+            {
+                "prompt": sample.prompt,
+                "answer": sample.answer,
+                "labels": sample.labels,
+                "split": sample.split,
+                "task_type": sample.task_type,
+                "dataset": sample.dataset,
+                "language": sample.language,
+            }
+            for sample in items
+        ]
+
+    test_samples = [s for s in samples if s.split == "test"][:n]
+    if test_samples:
+        dataset = Dataset.from_list(_to_rows(test_samples))
+        dataset.push_to_hub(
+            repo_id=repo_id, config_name=config_name, split="test", private=private
+        )
+        logger.info(
+            "Pushed %d test samples to hub: %s (config=%s)",
+            len(test_samples),
+            repo_id,
+            config_name,
+        )
+    else:
+        logger.warning("No test samples available; skipping test split upload.")
+
+    # RAGTruth only ships train/test splits, so carve the validation split from train.
+    validation_samples = [s for s in samples if s.split == "train"][:validation_n]
+    if validation_samples:
+        dataset = Dataset.from_list(_to_rows(validation_samples))
+        dataset.push_to_hub(
+            repo_id=repo_id, config_name=config_name, split="val", private=private
+        )
+        logger.info(
+            "Pushed %d validation samples to hub: %s (config=%s)",
+            len(validation_samples),
+            repo_id,
+            config_name,
+        )
+    else:
+        logger.warning("No validation samples available; skipping val split upload.")
 
 
 def main(
@@ -714,6 +772,10 @@ def main(
     push_to_hub: bool = False,
     hub_repo_id: str | None = None,
     private: bool = True,
+    push_test_subset: bool = False,
+    test_subset_repo_id: str | None = None,
+    test_subset_size: int = 2048,
+    validation_subset_size: int = 256,
 ) -> None:
     """Translates the preprocessed data using parallel processing.
 
@@ -730,6 +792,10 @@ def main(
     :param push_to_hub: Whether to push translated output to Hugging Face Hub
     :param hub_repo_id: Optional explicit Hugging Face dataset repo id
     :param private: Whether pushed dataset should be private
+    :param push_test_subset: Whether to also push a test-only subset to the Hub
+    :param test_subset_repo_id: Optional explicit repo id for the test subset
+    :param test_subset_size: Maximum number of test samples in the subset
+    :param validation_subset_size: Maximum number of validation samples in the subset
     """
     # Set up directories
     input_dir = Path(input_dir)
@@ -744,18 +810,6 @@ def main(
     output_file = output_dir / f"{dataset}_data_{target_lang.lower()}.json"
     log_file = output_dir / "error_log.txt"
 
-    # Check input file
-    if not input_file.exists():
-        logger.error(f"Input file not found: {input_file}")
-        raise FileNotFoundError(f"Input file not found: {input_file}")
-
-    # Load data
-    try:
-        data = HallucinationData.from_json(json.loads(input_file.read_text()))
-    except Exception as e:
-        logger.error(f"Error loading input data: {e!s}")
-        raise
-
     # Load existing translated data if resume is enabled
     if resume and output_file.exists():
         translated_data = load_check_existing_data(output_file=output_file)
@@ -765,8 +819,25 @@ def main(
         translated_data = HallucinationData(samples=[])
         num_processed = 0
 
-    # Get samples to translate
-    remaining_samples = data.samples[num_processed:]
+    # Load source data. If we already have a complete translated output and the
+    # source file is missing, allow push-only mode without requiring the input.
+    if input_file.exists():
+        try:
+            data = HallucinationData.from_json(json.loads(input_file.read_text()))
+        except Exception as e:
+            logger.error(f"Error loading input data: {e!s}")
+            raise
+        remaining_samples = data.samples[num_processed:]
+    elif num_processed > 0:
+        logger.warning(
+            f"Input file not found: {input_file}. "
+            f"Proceeding in push-only mode with {num_processed} existing translated samples."
+        )
+        remaining_samples = []
+    else:
+        logger.error(f"Input file not found: {input_file}")
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+
     total_samples = len(remaining_samples)
 
     if total_samples == 0:
@@ -782,6 +853,20 @@ def main(
                 repo_id=resolved_repo_id,
                 config_name=target_lang.lower(),
                 private=private,
+            )
+        if push_test_subset:
+            resolved_test_repo_id = (
+                test_subset_repo_id
+                if test_subset_repo_id
+                else f"EuroEval/{dataset}-translated-hallucinations-{target_lang.lower()}-mini"
+            )
+            push_test_subset_to_hub(
+                translated_data=translated_data,
+                repo_id=resolved_test_repo_id,
+                config_name=target_lang.lower(),
+                private=private,
+                n=test_subset_size,
+                validation_n=validation_subset_size,
             )
         return
 
@@ -845,6 +930,21 @@ def main(
             private=private,
         )
 
+    if push_test_subset:
+        resolved_test_repo_id = (
+            test_subset_repo_id
+            if test_subset_repo_id
+            else f"EuroEval/{dataset}-translated-hallucinations-{target_lang.lower()}-mini"
+        )
+        push_test_subset_to_hub(
+            translated_data=translated_data,
+            repo_id=resolved_test_repo_id,
+            config_name=target_lang.lower(),
+            private=private,
+            n=test_subset_size,
+            validation_n=validation_subset_size,
+        )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -874,7 +974,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--target-lang",
         type=str,
-        default="DE",
+        default="DA",
         help="Target language code (e.g., EN, DE, FR, etc.)",
     )
     parser.add_argument(
@@ -920,6 +1020,35 @@ if __name__ == "__main__":
         default=True,
         help="Whether uploaded Hub dataset should be private",
     )
+    parser.add_argument(
+        "--push-test-subset",
+        action="store_true",
+        help="Also push a test-only subset (up to --test-subset-size samples) to the Hub",
+    )
+    parser.add_argument(
+        "--test-subset-repo-id",
+        type=str,
+        default=None,
+        help=(
+            "Target Hugging Face dataset repo id for the test subset. "
+            "Default: EuroEval/<dataset>-translated-hallucinations-<lang>-mini"
+        ),
+    )
+    parser.add_argument(
+        "--test-subset-size",
+        type=int,
+        default=1000,
+        help="Maximum number of test samples to include in the test subset (default: 1000)",
+    )
+    parser.add_argument(
+        "--validation-subset-size",
+        type=int,
+        default=256,
+        help=(
+            "Maximum number of validation samples to include in the test subset "
+            "(default: 256)"
+        ),
+    )
     args = parser.parse_args()
     main(
         Path(args.input_dir),
@@ -935,4 +1064,8 @@ if __name__ == "__main__":
         args.push_to_hub,
         args.hub_repo_id,
         args.private,
+        args.push_test_subset,
+        args.test_subset_repo_id,
+        args.test_subset_size,
+        args.validation_subset_size,
     )

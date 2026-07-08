@@ -58,9 +58,7 @@ def _row_key(row: dict) -> tuple[str, str] | None:
     return (ctx[0], q)
 
 
-def _backfill_gold(
-    rows: list[dict], gold_lookup: dict[tuple[str, str], str]
-) -> int:
+def _backfill_gold(rows: list[dict], gold_lookup: dict[tuple[str, str], str]) -> int:
     """Fill ``gold_answer`` on rows where it's currently empty. Returns count filled."""
     filled = 0
     for row in rows:
@@ -74,9 +72,7 @@ def _backfill_gold(
     return filled
 
 
-def _upgrade_file(
-    path: Path, gold_lookup: dict[tuple[str, str], str]
-) -> None:
+def _upgrade_file(path: Path, gold_lookup: dict[tuple[str, str], str]) -> None:
     if not path.exists():
         logger.info(f"{path} does not exist; skipping.")
         return
