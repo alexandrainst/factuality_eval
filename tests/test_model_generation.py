@@ -20,7 +20,7 @@ def model_generation_module(
     class Dataset:
         """Stub dataset type."""
 
-    dataset_module.Dataset = Dataset
+    dataset_module.Dataset = Dataset  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "datasets", dataset_module)
 
     openai_module = types.ModuleType("openai")
@@ -28,7 +28,7 @@ def model_generation_module(
     class OpenAI:
         """Stub OpenAI client type."""
 
-    openai_module.OpenAI = OpenAI
+    openai_module.OpenAI = OpenAI  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "openai", openai_module)
 
     torch_module = types.ModuleType("torch")
@@ -36,12 +36,12 @@ def model_generation_module(
     class Tensor:
         """Stub tensor type."""
 
-    torch_module.Tensor = Tensor
+    torch_module.Tensor = Tensor  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "torch", torch_module)
 
     tqdm_module = types.ModuleType("tqdm")
     tqdm_auto_module = types.ModuleType("tqdm.auto")
-    tqdm_auto_module.tqdm = lambda iterable, **_: iterable
+    tqdm_auto_module.tqdm = lambda iterable, **_: iterable  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "tqdm", tqdm_module)
     monkeypatch.setitem(sys.modules, "tqdm.auto", tqdm_auto_module)
 
@@ -59,25 +59,25 @@ def model_generation_module(
     class PreTrainedTokenizerBase:
         """Stub pretrained tokenizer type."""
 
-    transformers_module.AutoModelForCausalLM = AutoModelForCausalLM
-    transformers_module.AutoTokenizer = AutoTokenizer
-    transformers_module.PreTrainedModel = PreTrainedModel
-    transformers_module.PreTrainedTokenizerBase = PreTrainedTokenizerBase
+    transformers_module.AutoModelForCausalLM = AutoModelForCausalLM  # type: ignore[attr-defined]
+    transformers_module.AutoTokenizer = AutoTokenizer  # type: ignore[attr-defined]
+    transformers_module.PreTrainedModel = PreTrainedModel  # type: ignore[attr-defined]
+    transformers_module.PreTrainedTokenizerBase = PreTrainedTokenizerBase  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "transformers", transformers_module)
 
     dataset_generation_module = types.ModuleType("factuality_eval.dataset_generation")
-    dataset_generation_module.generate_hash = lambda **_: "hash"
+    dataset_generation_module.generate_hash = lambda **_: "hash"  # type: ignore[attr-defined]
     monkeypatch.setitem(
         sys.modules, "factuality_eval.dataset_generation", dataset_generation_module
     )
 
     prompt_utils_module = types.ModuleType("factuality_eval.prompt_utils")
-    prompt_utils_module.Lang = str
+    prompt_utils_module.Lang = str  # type: ignore[attr-defined]
 
     class PromptUtils:
         """Stub prompt utility type."""
 
-    prompt_utils_module.PromptUtils = PromptUtils
+    prompt_utils_module.PromptUtils = PromptUtils  # type: ignore[attr-defined]
     monkeypatch.setitem(
         sys.modules, "factuality_eval.prompt_utils", prompt_utils_module
     )
@@ -158,9 +158,7 @@ def test_generate_single_answer_falls_back_when_enable_thinking_is_unsupported(
     model = _FakeModel()
 
     answer = model_generation_module.generate_single_answer_from_prompt(
-        tokenizer=tokenizer,
-        model=model,
-        prompt="Question?",
+        tokenizer=tokenizer, model=model, prompt="Question?"
     )
 
     assert answer == "answer"
@@ -188,7 +186,5 @@ def test_generate_single_answer_reraises_unrelated_chat_template_type_errors(
 
     with pytest.raises(TypeError, match="broken template"):
         model_generation_module.generate_single_answer_from_prompt(
-            tokenizer=tokenizer,
-            model=model,
-            prompt="Question?",
+            tokenizer=tokenizer, model=model, prompt="Question?"
         )

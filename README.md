@@ -118,7 +118,7 @@ uv run src/scripts/ground_truth/generate_hallucination_dataset.py language=da mo
 Evaluate a trained hallucination detector against token-level ground-truth labels:
 
 ```bash
-uv run src/scripts/ground_truth/evaluate_ground_truth.py language=da
+uv run src/scripts/ground_truth/evaluate_against_ground_truth.py language=da
 ```
 
 ## Data and Outputs
