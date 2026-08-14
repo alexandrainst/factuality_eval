@@ -32,6 +32,7 @@ training:
   weight_decay: 0.01
   push_to_hub: False
   max_length: 8192
+  device: auto  # auto/cuda/cpu
 
 models:
   hallu_detect_model: mmBERT-small

@@ -303,14 +303,17 @@ def main(config: DictConfig) -> None:
         f"{config.training.output_dir}/"
         f"{config.models.hallu_detect_model}-{target_dataset_name}{suffix}-{config.language}"
     )
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    cuda_is_available = (
+        config.training.device == "auto" and torch.cuda.is_available()
+    ) or config.training.device == "cuda"
+    device = torch.device("cuda" if cuda_is_available else "cpu")
     detector_device = (
         torch.device("cuda:1")
-        if torch.cuda.is_available() and torch.cuda.device_count() > 1
+        if cuda_is_available and torch.cuda.device_count() > 1
         else device
     )
     log(
-        f"CUDA available: {torch.cuda.is_available()} — using device: {device}",
+        f"CUDA available: {cuda_is_available} — using device: {device}",
         level=logging.INFO,
     )
 
@@ -379,7 +382,7 @@ def main(config: DictConfig) -> None:
         # is no longer needed.
         del trainer, model
         gc.collect()
-        if torch.cuda.is_available():
+        if cuda_is_available:
             torch.cuda.empty_cache()
 
         # Re-load the best checkpoint (Trainer saves the best-F1 model to save_path)
