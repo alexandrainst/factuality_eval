@@ -370,6 +370,7 @@ def main(config: DictConfig) -> None:
             epochs=config.training.epochs,
             learning_rate=config.training.learning_rate,
             save_path=model_save_path,
+            device=device,
         )
 
         header("Fine-tuning", color="light_blue", level=logging.INFO)
