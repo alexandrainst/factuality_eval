@@ -303,9 +303,7 @@ def main(config: DictConfig) -> None:
         f"{config.training.output_dir}/"
         f"{config.models.hallu_detect_model}-{target_dataset_name}{suffix}-{config.language}"
     )
-    cuda_is_available = (
-        config.training.device == "auto" and torch.cuda.is_available()
-    ) or config.training.device == "cuda"
+    cuda_is_available = torch.cuda.is_available()
     device = torch.device("cuda" if cuda_is_available else "cpu")
     detector_device = (
         torch.device("cuda:1")
